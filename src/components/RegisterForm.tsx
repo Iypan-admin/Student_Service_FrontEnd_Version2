@@ -126,9 +126,9 @@ const RegisterForm = () => {
     }
 
     // Phone validation
-    const phoneRegex = /^\d{10}$/;
+    const phoneRegex = /^\+?\d{7,15}$/; // supports + and 7–15 digits
     if (!phoneRegex.test(formData.phone)) {
-      newErrors.phone = 'Please enter a valid 10-digit phone number';
+      newErrors.phone = 'Please enter a valid phone number (7–15 digits)';
       isValid = false;
     }
 

@@ -3,35 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentDetails, fetchEliteCard } from '../../services/api';
 import { StudentDetails } from '../../types/auth';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Home, BookOpen, CreditCard, LogOut } from 'lucide-react';
+import logoImage from '../../assets/images/logo.png';
 
-const Sidebar = () => {
+interface SidebarProps {
+  currentView?: string;
+  onViewChange?: (view: string) => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ currentView = 'dashboard', onViewChange }) => {
   const navigate = useNavigate();
   const { token, tokenData, setToken } = useAuth();
   const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
-  const [eliteCard, setEliteCard] = useState(null);
+  const [eliteCard, setEliteCard] = useState<any>(null);
 
+  const [activeMenu, setActiveMenu] = useState(currentView);
 
-
-  useEffect(() => {
-    const getEliteCard = async () => {
-      if (studentDetails?.registration_number) {
-        try {
-          const data = await fetchEliteCard(studentDetails.registration_number);
-          if (data.success) {
-            setEliteCard(data.data);
-          }
-        } catch (err) {
-          console.error("Elite Card Fetch Error:", err);
-        }
-      }
-    };
-
-    getEliteCard();
-  }, [studentDetails]);
-
+  // Fetch student details
   useEffect(() => {
     const fetchStudentDetails = async () => {
       if (token && tokenData?.student_id) {
@@ -50,128 +40,192 @@ const Sidebar = () => {
     fetchStudentDetails();
   }, [token, tokenData]);
 
+  // Fetch elite card
+  useEffect(() => {
+    const getEliteCard = async () => {
+      if (studentDetails?.registration_number) {
+        try {
+          const data = await fetchEliteCard(studentDetails.registration_number);
+          if (data.success) {
+            setEliteCard(data.data);
+          }
+        } catch (err) {
+          console.error("Elite Card Fetch Error:", err);
+        }
+      }
+    };
+
+    getEliteCard();
+  }, [studentDetails]);
+
   const handleLogout = () => {
     setToken(null);
     navigate('/login');
   };
 
+  const handleMenuClick = (view: string) => {
+    setActiveMenu(view); // update active menu
+    if (onViewChange) onViewChange(view); // callback if parent wants
+    setIsOpen(false); // close mobile menu
+  };
+
   return (
     <>
-      {/* Hamburger Button - Enhanced styling with rounded background */}
+      {/* Hamburger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 right-4 z-50 p-2 bg-white/90 backdrop-blur-sm 
-          rounded-full text-gray-700 hover:text-blue-800 transition-all duration-300 
-          shadow-md hover:shadow-lg"
+        className="lg:hidden fixed top-16 right-5 z-50 p-3 bg-gradient-to-r from-blue-600 to-indigo-600 
+          rounded-xl text-white hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 
+          shadow-lg hover:shadow-xl hover:scale-105"
       >
         {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
       </button>
 
-      {/* Sidebar - Refined gradient and shadow */}
+      {/* Sidebar */}
       <div
         className={`fixed inset-y-0 left-0 z-30 transition-transform duration-300 
           lg:translate-x-0 ${!isOpen ? '-translate-x-full' : 'translate-x-0'}
-          w-72 lg:w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white 
+          w-72 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white 
           flex flex-col shadow-2xl`}
       >
-        {/* Header - Added logo/icon space and better typography */}
-        <div className="pt-6 px-6">
-          <div className="flex items-center gap-3 mb-6">
-            {/* Placeholder for logo/icon */}
-            <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-lg font-bold">S</span>
+        {/* Decorative Background Pattern */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          <div className="absolute top-10 right-10 w-32 h-32 bg-white rounded-full blur-3xl"></div>
+          <div className="absolute bottom-20 left-10 w-24 h-24 bg-white rounded-full blur-2xl"></div>
+        </div>
+
+        {/* Header */}
+        <div className="relative pt-8 px-6">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="h-12 w-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-lg overflow-hidden">
+              <img 
+                src={logoImage} 
+                alt="ISML Logo" 
+                className="h-full w-full object-contain p-1.5"
+              />
             </div>
-            <h2 className="text-xl font-semibold tracking-wide">Student Portal</h2>
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Student Portal</h2>
+              <p className="text-xs text-blue-100 mt-0.5">Your Learning Dashboard</p>
+            </div>
           </div>
         </div>
 
-        {/* Main Navigation Menu */}
-        <div className="flex-1 overflow-y-auto px-4">
-          <ul className="space-y-1">
+        {/* Main Navigation - Scrollable */}
+        <div className="relative flex-1 overflow-y-auto px-4 py-3 min-h-0 sidebar-scroll">
+          <ul className="space-y-2">
             {[
-              { label: 'Dashboard', href: '/dashboard' },
-              { label: 'Payments', href: '/payments' },
-            ].map((item) => (
-              <li key={item.label}>
-                <a
-                  href={item.href}
-                  className="block py-2.5 px-4 rounded-lg text-sm font-medium 
-                    hover:bg-blue-800/50 hover:text-blue-100 transition-all 
-                    duration-200 ease-in-out"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
+              { label: 'Dashboard', view: 'dashboard', icon: Home, description: 'Available batches' },
+              { label: 'Your Enrollment', view: 'enrollment', icon: BookOpen, description: 'Enrolled batches' },
+              { label: 'Payment', view: 'payment', icon: CreditCard, description: 'Payment history' },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = activeMenu === item.view;
+
+              return (
+                <li key={item.label}>
+                  <button
+                    onClick={() => handleMenuClick(item.view)}
+                    className={`w-full flex items-center gap-2.5 py-2.5 px-3 rounded-lg text-left relative
+                      transition-all duration-500 ease-in-out group overflow-hidden
+                      transform hover:scale-[1.02] active:scale-[0.98]
+                      ${isActive 
+                        ? 'bg-white/20 backdrop-blur-sm shadow-lg border border-white/30 scale-[1.02]' 
+                        : 'hover:bg-white/10 hover:backdrop-blur-sm'
+                      }`}
+                  >
+                    {/* Animated background on hover */}
+                    <div className={`absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 
+                      transform -skew-x-12 transition-transform duration-700 group-hover:translate-x-full
+                      ${isActive ? 'opacity-0' : ''}`} />
+                    
+                    <div className={`relative z-10 flex items-center justify-center w-8 h-8 rounded-md
+                      transition-all duration-500 ease-in-out ${
+                        isActive 
+                          ? 'bg-white/30 shadow-md scale-110' 
+                          : 'bg-white/10 group-hover:bg-white/20 group-hover:scale-105'
+                      }`}>
+                      <Icon className={`w-4 h-4 text-white transition-transform duration-500 ${
+                        isActive ? 'scale-110' : 'group-hover:scale-110'
+                      }`} />
+                    </div>
+                    
+                    <div className="relative z-10 flex-1 min-w-0">
+                      <p className={`font-semibold text-sm text-white truncate transition-all duration-500 ${
+                        isActive ? 'translate-x-1' : 'group-hover:translate-x-1'
+                      }`}>
+                        {item.label}
+                      </p>
+                      <p className={`text-[11px] mt-0.5 transition-all duration-500 truncate ${
+                        isActive ? 'text-blue-100 translate-x-1' : 'text-blue-200 group-hover:text-white group-hover:translate-x-1'
+                      }`}>
+                        {item.description}
+                      </p>
+                    </div>
+                    
+                    {isActive && (
+                      <div className="relative z-10 w-1.5 h-1.5 bg-white rounded-full shadow-md animate-pulse transition-all duration-500" />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
-        {/* Student Profile Section with Logout */}
-        <div className="sticky bottom-0 p-6 bg-blue-950/80 backdrop-blur-sm 
-  border-t border-blue-800/50 space-y-4">
-
-          {/* Title */}
-          <h3 className="text-base font-semibold mb-3 text-blue-200 tracking-wide">
-            Student Profile
-          </h3>
-
-          {/* Student Basic Details */}
-          {loading ? (
-            <p className="text-sm text-blue-300/70 italic animate-pulse">
-              Loading details...
-            </p>
-          ) : studentDetails ? (
-            <div className="space-y-1.5 text-sm">
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Name:</span>
-                <span className="text-blue-100">{studentDetails.name}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Email:</span>
-                <span className="text-blue-100">{studentDetails.email}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Reg No:</span>
-                <span className="text-blue-100">{studentDetails.registration_number}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Center:</span>
-                <span className="text-blue-100">{studentDetails.center.center_name}</span>
-              </p>
-
-              {/* 🎖️ Elite Card Details Section */}
-              <div className="pt-3 mt-3 border-t border-blue-800/30">
-                <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                  Elite Card Details
-                </h4>
-                <p className="flex items-center gap-2">
-                  <span className="font-medium text-blue-200 w-16">Card Type:</span>
-                  <span className="text-blue-100">{eliteCard?.card_type || 'N/A'}</span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="font-medium text-blue-200 w-16">Card No:</span>
-                  <span className="text-blue-100">{eliteCard?.card_number || 'N/A'}</span>
-                </p>
-              </div>
+        {/* Elite Card Details Section - Pinned to Bottom */}
+        <div className="relative mt-auto p-3 lg:p-6 bg-gradient-to-t from-indigo-900/90 to-transparent backdrop-blur-md border-t border-white/10">
+          {/* Elite Card Details */}
+          <div className="space-y-2 lg:space-y-4">
+            <div className="flex items-center gap-1.5 lg:gap-2 mb-2 lg:mb-4">
+              <CreditCard className="w-3 h-3 lg:w-4 lg:h-4 text-white" />
+              <h3 className="text-xs lg:text-sm font-bold text-white tracking-wide">
+                Elite Card Details
+              </h3>
             </div>
-          ) : (
-            <p className="text-sm text-red-400 font-medium">
-              Unable to load details.
-            </p>
-          )}
+
+            {loading ? (
+              <div className="space-y-2 lg:space-y-3">
+                <div className="h-3 lg:h-4 bg-white/10 rounded animate-pulse"></div>
+                <div className="h-3 lg:h-4 bg-white/10 rounded animate-pulse w-3/4"></div>
+              </div>
+            ) : studentDetails ? (
+              <div className="space-y-2 lg:space-y-3">
+                <div className="flex items-center gap-1.5 lg:gap-2 p-1.5 lg:p-2.5 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
+                  <p className="text-[10px] lg:text-xs text-blue-200 font-medium">Card Type:</p>
+                  <p className="text-[10px] lg:text-xs font-semibold text-white">
+                    {eliteCard?.card_type || 'N/A'}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 lg:gap-2 p-1.5 lg:p-2.5 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
+                  <p className="text-[10px] lg:text-xs text-blue-200 font-medium">Card Number:</p>
+                  <p className="text-[10px] lg:text-xs font-semibold text-white">
+                    {eliteCard?.card_number || 'N/A'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] lg:text-xs text-red-300 font-medium bg-red-500/20 p-1.5 lg:p-2.5 rounded-lg">
+                Unable to load Elite Card details.
+              </p>
+            )}
+          </div>
 
           {/* Logout Button */}
           <button
             onClick={handleLogout}
-            className="w-full mt-4 py-2.5 px-4 rounded-lg text-sm font-medium
-      bg-red-600/20 hover:bg-red-600/70 text-red-100
-      transition-all duration-200 ease-in-out
-      border border-red-500/30 hover:border-red-500/50"
+            className="w-full mt-3 lg:mt-6 py-2 lg:py-3 px-3 lg:px-4 rounded-xl text-xs lg:text-sm font-bold
+              bg-white/10 hover:bg-white/20 text-white
+              transition-all duration-300 ease-in-out
+              border border-white/20 hover:border-white/30
+              flex items-center justify-center gap-1.5 lg:gap-2 group
+              shadow-lg hover:shadow-xl"
           >
+            <LogOut className="w-3.5 h-3.5 lg:w-4 lg:h-4 group-hover:rotate-12 transition-transform" />
             Logout
           </button>
         </div>
-
       </div>
     </>
   );

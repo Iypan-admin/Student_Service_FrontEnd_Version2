@@ -43,29 +43,30 @@ const Chat: React.FC = () => {
   // Fetch messages for the batch
   const fetchMessages = async () => {
     if (!batchId) {
-      setError('Invalid batch ID');
+      setError("Invalid batch ID");
       setLoading(false);
       return;
     }
 
-    const url = `http://localhost:3030/chats/${batchId}`;
-    console.log('Fetching messages from:', url); // Debug log
+    const CHAT_API_URL =
+      import.meta.env.VITE_CHAT_API_URL || "http://localhost:3030";
+
+    const url = `${CHAT_API_URL}/chats/${batchId}`;
+    console.log("Fetching messages from:", url);
 
     try {
       setError(null);
       const response = await fetch(url);
+
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP error ${response.status}`);
       }
+
       const data: ChatMessage[] = await response.json();
       setMessages(data);
     } catch (error: any) {
-      console.error('Error fetching messages:', error.message);
-      let errorMessage = 'Failed to load messages. Please try again.';
-      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        errorMessage = 'Cannot connect to the server. Ensure the backend is running at http://localhost:3030.';
-      }
-      setError(errorMessage);
+      console.error("Error fetching messages:", error.message);
+      setError("Cannot connect to chat server. Please try again later.");
     } finally {
       setLoading(false);
     }

@@ -28,6 +28,7 @@ export interface StudentDetails {
   password: string;
   phone: number;
   status: boolean;
+  profile_picture?: string;
   state: {
     state_id: string;
     created_at: string;
@@ -52,6 +53,8 @@ export interface RegisterData {
   email: string;
   password: string;
   phone: string;
+  is_referred: boolean;
+  referred_by_center?: string;
 }
 
 export interface LoginData {
@@ -80,6 +83,27 @@ export interface Batch {
   duration: number;
   center: string;
   teacher: string;
+  status?: string;
+  course_name?: string;
+  course_type?: string;
+  schedule?: string;
+  time_from?: string;
+  time_to?: string;
+  max_students?: number;
+  enrolled_students?: number;
+  center_name?: string;
+  courses?: Course;
+  teachers?: {
+    teacher_id: string;
+    users: {
+      name: string;
+      full_name?: string;
+    };
+  };
+  centers?: {
+    center_id: string;
+    center_name: string;
+  };
 }
 
 export interface Course {
@@ -96,6 +120,8 @@ export interface BatchDetails {
   batch_name: string;
   created_at: string;
   duration: string;
+  status?: string;
+  total_sessions?: number;
   courses: Course;
   centers: {
     center_id: string;
@@ -105,6 +131,7 @@ export interface BatchDetails {
     teacher_id: string;
     users: {
       name: string;
+      full_name?: string;
     };
   };
 }
@@ -134,6 +161,9 @@ export interface ClassMeet {
   current: boolean;
   note: string;
   title: string;
+  session_number?: number;
+  status?: string;
+  cancellation_reason?: string;
 }
 
 export interface Note {
@@ -143,6 +173,7 @@ export interface Note {
   batch_id: string;
   title: string;
   note: string;
+  files?: string[];
 }
 
 // ------------------------ PAYMENTS ------------------------
@@ -159,6 +190,14 @@ export interface PaymentTransaction {
   duration: number;
   status: boolean; // Admin approval
   enrollment_id: string;
+  payment_type: string; // "full" or "emi"
+  course_name: string;
+  final_fees: number;
+  original_fees: number;
+  discount_percentage: number;
+  course_duration: number;
+  current_emi: number | null;
+  next_emi_due_date: string | null; // Due date for next EMI installment
   // Optional relation if needed
   enrollment?: {
     enrollment_id: string;
@@ -178,3 +217,25 @@ export interface TransactionResponse {
 export interface TransactionsResponse {
   transactions: PaymentTransaction[];
 }
+
+// ------------------------ CHAT ------------------------
+export interface ChatMessage {
+  id: number;
+  text: string;
+  batch_id: string;
+  sender: string;
+  created_at: string;
+  sender_name?: string;
+  user_id?: string;
+  recipient_id?: string | null;
+}
+
+export interface SendChatMessageRequest {
+  text: string;
+  batch_id: string;
+  sender: string;
+  user_id?: string | null;
+  recipient_id?: string | null;
+}
+
+

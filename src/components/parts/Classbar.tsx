@@ -1,15 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getBatchDetails } from '../../services/api';
-import { BatchDetails } from '../../types/auth';
-import { Menu, X, LogOut } from 'lucide-react';
+import { getBatchDetails, getStudentDetails } from '../../services/api';
+import { BatchDetails, StudentDetails } from '../../types/auth';
+import { Menu, X, LogOut, Calendar, BookOpen, MessageCircle, BarChart3, GraduationCap, User } from 'lucide-react';
 
 const Classbar = () => {
   const { batchId } = useParams();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const location = useLocation();
+  const { token, tokenData, setToken } = useAuth();
   const [batchDetails, setBatchDetails] = useState<BatchDetails | null>(null);
+  const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -31,116 +33,201 @@ const Classbar = () => {
     fetchBatchDetails();
   }, [batchId, token]);
 
+  // Fetch student details
+  useEffect(() => {
+    const fetchStudentDetails = async () => {
+      if (token && tokenData?.student_id) {
+        try {
+          const details = await getStudentDetails(tokenData.student_id);
+          setStudentDetails(details);
+        } catch (error) {
+          console.error('Failed to fetch student details:', error);
+        }
+      }
+    };
+
+    fetchStudentDetails();
+  }, [token, tokenData]);
+
   const handleBackToDashboard = () => {
     navigate('/dashboard');
   };
 
   return (
     <>
-      {/* Hamburger Button - Matches Sidebar styling */}
+      {/* Hamburger Button - Berry Style */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 right-4 z-50 p-2 bg-white/90 backdrop-blur-sm 
-          rounded-full text-gray-700 hover:text-blue-800 transition-all duration-300 
-          shadow-md hover:shadow-lg"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-white rounded-lg shadow-md hover:shadow-lg 
+          text-gray-700 hover:bg-gray-50 transition-all duration-200 border border-gray-200"
       >
-        {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
-      {/* Classbar - Dark blue gradient matching Sidebar */}
+      {/* Classbar - Berry Style */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-72 bg-gradient-to-b from-blue-950 to-blue-900 
-          text-white flex flex-col shadow-2xl transition-transform duration-300 
-          ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-40 lg:z-30 w-72 bg-white flex flex-col shadow-xl transition-all duration-300 
+          ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+          border-r border-gray-200`}
       >
-        {/* Header - Matches Sidebar with icon placeholder */}
-        <div className="pt-6 px-6">
-          <div className="flex items-center gap-3 mb-6">
-            {/* Placeholder for icon, blue to match Sidebar */}
-            <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-lg font-bold">C</span>
+        {/* Header - BERRY Style */}
+        <div className="pt-6 px-6 pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md"
+              style={{
+                background:
+                  "linear-gradient(to bottom right, #2196f3, #1976d2)",
+              }}
+            >
+              <GraduationCap className="h-6 w-6 text-white" />
             </div>
-            <h2 className="text-xl font-semibold tracking-wide">Class Portal</h2>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">
+                Class Portal
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Learning Management
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Main Content - Menu styling matches Sidebar */}
-        <div className="flex-1 overflow-y-auto px-4">
+        {/* Main Navigation - Scrollable - BERRY Style */}
+        <div className="relative flex-1 overflow-y-auto px-4 py-4 min-h-0">
           <ul className="space-y-1">
             {[
-              { label: 'Class Schedule', href: `/class/${batchId}` },
-              { label: 'Resources', href: `/class/${batchId}/resources` },
-              { label: 'Chat', href: `/class/${batchId}/chat` },
-            ].map((item) => (
-              <li key={item.label}>
-                <a
-                  href={item.href}
-                  className="block py-2.5 px-4 rounded-lg text-sm font-medium 
-                    hover:bg-blue-800/50 hover:text-blue-100 transition-all 
-                    duration-200 ease-in-out"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
+              { 
+                label: 'Class Schedule', 
+                href: `/class/${batchId}`, 
+                icon: Calendar,
+                description: 'View schedule'
+              },
+              { 
+                label: 'Resources', 
+                href: `/class/${batchId}/resources`, 
+                icon: BookOpen,
+                description: 'Study materials'
+              },
+              { 
+                label: 'Chat', 
+                href: `/class/${batchId}/chat`, 
+                icon: MessageCircle,
+                description: 'Class discussion'
+              },
+              { 
+                label: 'Attendance', 
+                href: `/class/${batchId}/attendance`, 
+                icon: BarChart3,
+                description: 'Attendance records'
+              },
+              { 
+                label: 'LSRW', 
+                href: `/class/${batchId}/lsrw`, 
+                icon: GraduationCap,
+                description: 'Learning tasks'
+              },
+            ].map((item) => {
+              const isActive = location.pathname === item.href;
+              const Icon = item.icon;
+              return (
+                <li key={item.label}>
+                  <a
+                    href={item.href}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left
+                      transition-all duration-200 ${
+                        isActive
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                        isActive
+                          ? "bg-blue-100"
+                          : "bg-gray-100 group-hover:bg-gray-200"
+                      }`}
+                    >
+                      <Icon
+                        className={`w-5 h-5 transition-colors duration-200 ${
+                          isActive ? "text-blue-600" : "text-gray-600"
+                        }`}
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`font-semibold text-sm truncate ${
+                          isActive ? "text-blue-700" : "text-gray-800"
+                        }`}
+                      >
+                        {item.label}
+                      </p>
+                      <p
+                        className={`text-xs mt-0.5 truncate ${
+                          isActive ? "text-blue-600" : "text-gray-500"
+                        }`}
+                      >
+                        {item.description}
+                      </p>
+                    </div>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
-        {/* Batch Info with Back to Dashboard Button */}
-        <div className="sticky bottom-0 p-6 bg-blue-950/80 backdrop-blur-sm border-t border-blue-800/50">
-          <h3 className="text-base font-semibold mb-3 text-blue-200 tracking-wide">
-            Batch Information
-          </h3>
-          {loading ? (
-            <p className="text-sm text-blue-300/70 italic animate-pulse">
-              Loading details...
-            </p>
-          ) : batchDetails ? (
-            <div className="space-y-1.5 text-sm">
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-20">Batch:</span>
-                <span className="text-blue-100">{batchDetails.batch_name}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-20">Teacher:</span>
-                <span className="text-blue-100">
-                  {batchDetails.teachers?.users?.name || 'Not assigned'}
-                </span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-20">Course:</span>
-                <span className="text-blue-100">{batchDetails.courses.course_name}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-20">Program:</span>
-                <span className="text-blue-100">{batchDetails.courses.program}</span>
-              </p>
-
-              {/* Back to Dashboard Button */}
-              <button
-                onClick={handleBackToDashboard}
-                className="w-full mt-6 flex items-center justify-center gap-2 py-2.5 px-4 
-                  bg-blue-600/20 hover:bg-blue-600/70 rounded-lg text-sm font-medium 
-                  text-blue-100 transition-all duration-200 ease-in-out
-                  border border-blue-500/30 hover:border-blue-500/50"
-              >
-                <LogOut className="h-4 w-4 rotate-180" />
-                Back to Dashboard
-              </button>
+        {/* Student Profile Section - Pinned to Bottom - BERRY Style */}
+        <div className="mt-auto p-4 border-t border-gray-200 bg-gray-50">
+          {/* Student Profile */}
+          <div className="flex items-center gap-3 mb-4">
+            {/* Student Avatar with Online Status */}
+            <div className="relative">
+              {studentDetails?.profile_picture ? (
+                <img
+                  src={studentDetails.profile_picture}
+                  alt={studentDetails.name || 'Student'}
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-md"
+                />
+              ) : (
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md border-2 border-white">
+                  <User className="w-6 h-6" />
+                </div>
+              )}
+              {/* Online Status Indicator */}
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
             </div>
-          ) : (
-            <p className="text-sm text-red-400 font-medium">
-              Unable to load details.
-            </p>
-          )}
+            
+            {/* Student Name and Role */}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-bold text-gray-800 truncate">
+                {studentDetails?.name || 'Student'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Student
+              </p>
+            </div>
+          </div>
+
+          {/* Back to Dashboard Button - BERRY Style */}
+          <button
+            onClick={handleBackToDashboard}
+            className="w-full py-2.5 px-4 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg 
+              hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-200
+              flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+          >
+            <LogOut className="w-4 h-4 rotate-180" />
+            Back to Dashboard
+          </button>
         </div>
 
       </div>
 
-      {/* Overlay for mobile when sidebar is open */}
+      {/* Overlay for mobile when sidebar is open - Berry Style */}
       {isOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+          className="lg:hidden fixed inset-0 bg-black/50 z-30 transition-opacity duration-300"
           onClick={() => setIsOpen(false)}
         />
       )}

@@ -1,37 +1,49 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentDetails, fetchEliteCard } from '../../services/api';
+import { getStudentDetails } from '../../services/api';
 import { StudentDetails } from '../../types/auth';
-import { Menu, X } from 'lucide-react';
+import { Home, BookOpen, LogOut, Calendar, User, CreditCard } from 'lucide-react';
+import logoImage from '../../assets/images/logo.png';
 
-const Sidebar = () => {
+interface SidebarProps {
+  currentView?: string;
+  onViewChange?: (view: string) => void;
+  isOpen?: boolean;
+  setIsOpen?: (open: boolean) => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ currentView = 'dashboard', onViewChange, isOpen: externalIsOpen, setIsOpen: externalSetIsOpen }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token, tokenData, setToken } = useAuth();
   const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(false);
-  const [eliteCard, setEliteCard] = useState(null);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  
+  // Use external state if provided, otherwise use internal state
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
+  const setIsOpen = externalSetIsOpen || setInternalIsOpen;
 
-
+  // Determine active menu based on route
+  const [activeMenu, setActiveMenu] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path === '/event-calendar') return 'calendar';
+      if (path === '/dashboard') return currentView || 'dashboard';
+    }
+    return currentView || 'dashboard';
+  });
 
   useEffect(() => {
-    const getEliteCard = async () => {
-      if (studentDetails?.registration_number) {
-        try {
-          const data = await fetchEliteCard(studentDetails.registration_number);
-          if (data.success) {
-            setEliteCard(data.data);
-          }
-        } catch (err) {
-          console.error("Elite Card Fetch Error:", err);
-        }
-      }
-    };
+    if (location.pathname === '/event-calendar') {
+      setActiveMenu('calendar');
+    } else if (location.pathname === '/dashboard') {
+      setActiveMenu(currentView || 'dashboard');
+    }
+  }, [location.pathname, currentView]);
 
-    getEliteCard();
-  }, [studentDetails]);
-
+  // Fetch student details
   useEffect(() => {
     const fetchStudentDetails = async () => {
       if (token && tokenData?.student_id) {
@@ -50,128 +62,212 @@ const Sidebar = () => {
     fetchStudentDetails();
   }, [token, tokenData]);
 
+
   const handleLogout = () => {
     setToken(null);
     navigate('/login');
   };
 
+  const handleMenuClick = (view: string) => {
+    setActiveMenu(view); // update active menu
+    
+    // Always close sidebar when menu item is clicked (especially for mobile/tablet)
+    setIsOpen(false);
+    
+    // Navigate to routes for specific views
+    if (view === 'calendar') {
+      navigate('/event-calendar');
+    } else if (view === 'dashboard') {
+      navigate('/dashboard', { state: { view: 'dashboard' } });
+      // Use view change callback if available (for Dashboard component)
+      if (onViewChange) {
+        setTimeout(() => onViewChange('dashboard'), 100);
+      }
+    } else if (view === 'enrollment') {
+      navigate('/dashboard', { state: { view: 'enrollment' } });
+      // Use view change callback if available (for Dashboard component)
+      if (onViewChange) {
+        setTimeout(() => onViewChange('enrollment'), 100);
+      }
+    } else if (view === 'payment') {
+      navigate('/dashboard', { state: { view: 'payment' } });
+      // Use view change callback if available (for Dashboard component)
+      if (onViewChange) {
+        setTimeout(() => onViewChange('payment'), 100);
+      }
+    } else {
+      // For other views, use callback if available
+      if (onViewChange) onViewChange(view);
+    }
+  };
+
   return (
     <>
-      {/* Hamburger Button - Enhanced styling with rounded background */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 right-4 z-50 p-2 bg-white/90 backdrop-blur-sm 
-          rounded-full text-gray-700 hover:text-blue-800 transition-all duration-300 
-          shadow-md hover:shadow-lg"
-      >
-        {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-      </button>
+      {/* Overlay - Close sidebar when clicking outside (mobile/tablet only) */}
+      {isOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-30 transition-opacity duration-300"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
-      {/* Sidebar - Refined gradient and shadow */}
+      {/* Sidebar - BERRY Style */}
       <div
-        className={`fixed inset-y-0 left-0 z-30 transition-transform duration-300 
-          lg:translate-x-0 ${!isOpen ? '-translate-x-full' : 'translate-x-0'}
-          w-72 lg:w-64 bg-gradient-to-b from-blue-950 to-blue-900 text-white 
-          flex flex-col shadow-2xl`}
+        className={`fixed inset-y-0 left-0 z-40 lg:z-30 transition-transform duration-300 
+          lg:translate-x-0 ${!isOpen ? "-translate-x-full" : "translate-x-0"}
+          w-72 bg-white border-r border-gray-200 flex flex-col shadow-sm`}
       >
-        {/* Header - Added logo/icon space and better typography */}
-        <div className="pt-6 px-6">
-          <div className="flex items-center gap-3 mb-6">
-            {/* Placeholder for logo/icon */}
-            <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-lg font-bold">S</span>
+        {/* Header - BERRY Style */}
+        <div className="pt-6 px-6 pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md"
+              style={{
+                background:
+                  "linear-gradient(to bottom right, #2196f3, #1976d2)",
+              }}
+            >
+              <img
+                src={logoImage}
+                alt="ISML Logo"
+                className="h-6 w-6 object-contain"
+              />
             </div>
-            <h2 className="text-xl font-semibold tracking-wide">Student Portal</h2>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">
+                Student Portal
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Your Learning Dashboard
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Main Navigation Menu */}
-        <div className="flex-1 overflow-y-auto px-4">
+        {/* Main Navigation - Scrollable - BERRY Style */}
+        <div className="relative flex-1 overflow-y-auto px-4 py-4 min-h-0">
           <ul className="space-y-1">
             {[
-              { label: 'Dashboard', href: '/dashboard' },
-              { label: 'Payments', href: '/payments' },
-            ].map((item) => (
-              <li key={item.label}>
-                <a
-                  href={item.href}
-                  className="block py-2.5 px-4 rounded-lg text-sm font-medium 
-                    hover:bg-blue-800/50 hover:text-blue-100 transition-all 
-                    duration-200 ease-in-out"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
+              {
+                label: "Dashboard",
+                view: "dashboard",
+                icon: Home,
+                description: "Available batches",
+              },
+              {
+                label: "Your Enrollment",
+                view: "enrollment",
+                icon: BookOpen,
+                description: "Enrolled batches",
+              },
+              {
+                label: "Payment",
+                view: "payment",
+                icon: CreditCard,
+                description: "Payment history",
+              },
+              {
+                label: "Event Calendar",
+                view: "calendar",
+                icon: Calendar,
+                description: "View events",
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = activeMenu === item.view;
+
+              return (
+                <li key={item.label}>
+                  <button
+                    onClick={() => handleMenuClick(item.view)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left
+                      transition-all duration-200 ${
+                        isActive
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                        isActive
+                          ? "bg-blue-100"
+                          : "bg-gray-100 group-hover:bg-gray-200"
+                      }`}
+                    >
+                      <Icon
+                        className={`w-5 h-5 transition-colors duration-200 ${
+                          isActive ? "text-blue-600" : "text-gray-600"
+                        }`}
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`font-semibold text-sm truncate ${
+                          isActive ? "text-blue-700" : "text-gray-800"
+                        }`}
+                      >
+                        {item.label}
+                      </p>
+                      <p
+                        className={`text-xs mt-0.5 truncate ${
+                          isActive ? "text-blue-600" : "text-gray-500"
+                        }`}
+                      >
+                        {item.description}
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
-        {/* Student Profile Section with Logout */}
-        <div className="sticky bottom-0 p-6 bg-blue-950/80 backdrop-blur-sm 
-  border-t border-blue-800/50 space-y-4">
-
-          {/* Title */}
-          <h3 className="text-base font-semibold mb-3 text-blue-200 tracking-wide">
-            Student Profile
-          </h3>
-
-          {/* Student Basic Details */}
-          {loading ? (
-            <p className="text-sm text-blue-300/70 italic animate-pulse">
-              Loading details...
-            </p>
-          ) : studentDetails ? (
-            <div className="space-y-1.5 text-sm">
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Name:</span>
-                <span className="text-blue-100">{studentDetails.name}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Email:</span>
-                <span className="text-blue-100">{studentDetails.email}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Reg No:</span>
-                <span className="text-blue-100">{studentDetails.registration_number}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="font-medium text-blue-200 w-16">Center:</span>
-                <span className="text-blue-100">{studentDetails.center.center_name}</span>
-              </p>
-
-              {/* 🎖️ Elite Card Details Section */}
-              <div className="pt-3 mt-3 border-t border-blue-800/30">
-                <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                  Elite Card Details
-                </h4>
-                <p className="flex items-center gap-2">
-                  <span className="font-medium text-blue-200 w-16">Card Type:</span>
-                  <span className="text-blue-100">{eliteCard?.card_type || 'N/A'}</span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="font-medium text-blue-200 w-16">Card No:</span>
-                  <span className="text-blue-100">{eliteCard?.card_number || 'N/A'}</span>
-                </p>
-              </div>
+        {/* Student Profile Section - Pinned to Bottom - BERRY Style */}
+        <div className="mt-auto p-4 border-t border-gray-200 bg-gray-50">
+          {/* Student Profile */}
+          <div className="flex items-center gap-3 mb-4">
+            {/* Student Avatar with Online Status */}
+            <div className="relative">
+              {studentDetails?.profile_picture ? (
+                <img
+                  src={studentDetails.profile_picture}
+                  alt={studentDetails.name || 'Student'}
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-md"
+                />
+              ) : (
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md border-2 border-white">
+                  <User className="w-6 h-6" />
+                </div>
+              )}
+              {/* Online Status Indicator */}
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
             </div>
-          ) : (
-            <p className="text-sm text-red-400 font-medium">
-              Unable to load details.
-            </p>
-          )}
+            
+            {/* Student Name and Role */}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-bold text-gray-800 truncate">
+                {studentDetails?.name || 'Student'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Student
+              </p>
+            </div>
+          </div>
 
-          {/* Logout Button */}
+          {/* Logout Button - BERRY Style */}
           <button
             onClick={handleLogout}
-            className="w-full mt-4 py-2.5 px-4 rounded-lg text-sm font-medium
-      bg-red-600/20 hover:bg-red-600/70 text-red-100
-      transition-all duration-200 ease-in-out
-      border border-red-500/30 hover:border-red-500/50"
+            className="w-full py-2.5 px-4 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg 
+              hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-200
+              flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
           >
+            <LogOut className="w-4 h-4" />
             Logout
           </button>
         </div>
-
       </div>
     </>
   );

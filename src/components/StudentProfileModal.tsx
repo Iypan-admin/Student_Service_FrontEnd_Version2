@@ -36,11 +36,13 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
     name: '',
     email: '',
     phone: '',
+    date_of_birth: '',
   });
   const [originalForm, setOriginalForm] = useState({
     name: '',
     email: '',
     phone: '',
+    date_of_birth: '',
   });
 
   // Initialize form data when studentDetails changes
@@ -50,6 +52,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         name: studentDetails.name || '',
         email: studentDetails.email || '',
         phone: studentDetails.phone?.toString() || '',
+        date_of_birth: studentDetails.date_of_birth || '',
       };
       setEditForm(formData);
       setOriginalForm(formData);
@@ -164,6 +167,7 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         name: editForm.name.trim(),
         email: editForm.email.trim(),
         phone: parseInt(editForm.phone),
+        date_of_birth: editForm.date_of_birth || null,
       };
 
       await updateStudentProfile(token, updateData);
@@ -347,10 +351,11 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 {!isEditing ? (
                   <button
                     onClick={handleEdit}
-                    className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg p-2 transition-all duration-200"
+                    className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg px-3 py-2 transition-all duration-200"
                     title="Edit Profile"
                   >
                     <Edit3 className="w-4 h-4" />
+                    <span className="text-sm font-medium">Edit</span>
                   </button>
                 ) : (
                   <div className="flex gap-1">
@@ -545,6 +550,32 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                     />
                   ) : (
                     <p className="text-sm font-semibold text-gray-900">{formatPhone(studentDetails.phone)}</p>
+                  )}
+                </div>
+
+                {/* Date of Birth */}
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-gray-500" />
+                    <span className="text-xs font-medium text-gray-500">Date of Birth</span>
+                  </div>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={editForm.date_of_birth}
+                      onChange={(e) => handleInputChange('date_of_birth', e.target.value)}
+                      className="w-full text-sm font-semibold text-gray-900 bg-white border border-gray-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Select your date of birth"
+                      max={new Date().toISOString().split('T')[0]} // Prevent future dates
+                    />
+                  ) : (
+                    <p className="text-sm font-semibold text-gray-900">
+                      {studentDetails.date_of_birth ? new Date(studentDetails.date_of_birth).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      }) : 'Not specified'}
+                    </p>
                   )}
                 </div>
 

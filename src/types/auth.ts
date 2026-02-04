@@ -29,6 +29,7 @@ export interface StudentDetails {
   phone: number;
   status: boolean;
   profile_picture?: string;
+  date_of_birth?: string;
   state: {
     state_id: string;
     created_at: string;

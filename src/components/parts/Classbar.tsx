@@ -1,37 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getBatchDetails, getStudentDetails } from '../../services/api';
-import { BatchDetails, StudentDetails } from '../../types/auth';
-import { Menu, X, LogOut, Calendar, BookOpen, MessageCircle, BarChart3, GraduationCap, User } from 'lucide-react';
+import { getStudentDetails } from '../../services/api';
+import { StudentDetails } from '../../types/auth';
+import { Menu, X, LogOut, Calendar, BookOpen, MessageCircle, BarChart3, GraduationCap, User, TrendingUp } from 'lucide-react';
 
 const Classbar = () => {
   const { batchId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { token, tokenData, setToken } = useAuth();
-  const [batchDetails, setBatchDetails] = useState<BatchDetails | null>(null);
+  const { token, tokenData } = useAuth();
   const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
-  const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    const fetchBatchDetails = async () => {
-      if (batchId && token) {
-        try {
-          setLoading(true);
-          const details = await getBatchDetails(batchId, token);
-          setBatchDetails(details);
-        } catch (error) {
-          console.error('Failed to fetch batch details:', error);
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchBatchDetails();
-  }, [batchId, token]);
 
   // Fetch student details
   useEffect(() => {
@@ -126,6 +106,12 @@ const Classbar = () => {
                 href: `/class/${batchId}/lsrw`, 
                 icon: GraduationCap,
                 description: 'Learning tasks'
+              },
+              { 
+                label: 'Results & Certificate', 
+                href: `/class/${batchId}/results-certificate`, 
+                icon: TrendingUp,
+                description: 'Assessment marks & certificates'
               },
             ].map((item) => {
               const isActive = location.pathname === item.href;

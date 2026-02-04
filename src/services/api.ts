@@ -755,4 +755,90 @@ export const sendChatMessage = async (messageData: SendChatMessageRequest): Prom
   }
 };
 
+// ===========================================
+// STUDENT CERTIFICATE API FUNCTIONS
+// ===========================================
+
+/**
+ * Get all batches for a student
+ * @param studentId - Student ID
+ */
+export const getStudentBatches = async (studentId: string) => {
+  try {
+    const response = await API.get(`/student/certificates/batches/${studentId}`);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching student batches:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get student's assessment marks for a batch
+ * @param studentId - Student ID
+ * @param batchId - Batch ID
+ */
+export const getStudentAssessmentMarks = async (studentId: string, batchId: string, token: string) => {
+  try {
+    const response = await API.get(`/student/certificates/marks/${studentId}/${batchId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching assessment marks:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get student's certificates for a batch
+ * @param studentId - Student ID
+ * @param batchId - Batch ID
+ */
+export const getStudentCertificates = async (studentId: string, batchId: string, token: string) => {
+  try {
+    const response = await API.get(`/student/certificates/certificates/${studentId}/${batchId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching student certificates:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get certificate details
+ * @param certificateId - Certificate ID
+ */
+export const getCertificateDetails = async (certificateId: string, token: string) => {
+  try {
+    const response = await API.get(`/student/certificates/certificate/${certificateId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching certificate details:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Download certificate PDF
+ * @param certificateId - Certificate ID
+ */
+export const downloadCertificate = async (certificateId: string, token: string): Promise<Blob> => {
+  try {
+    const timestamp = new Date().getTime(); // Add timestamp to prevent caching
+    const response = await API.get(`/student/certificates/download/${certificateId}?t=${timestamp}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: 'blob',
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error downloading certificate:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
 

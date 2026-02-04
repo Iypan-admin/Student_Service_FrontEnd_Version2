@@ -10,6 +10,7 @@ import Payments from './components/Payments';
 import StudentAttendancePage from './pages/StudentAttendancePage';
 import StudentLSRWPage from './pages/StudentLSRWPage';
 import StudentLSRWReviewPage from './pages/StudentLSRWReviewPage';
+import ResultsAndCertificate from './components/ResultsAndCertificate'; // Import ResultsAndCertificate
 import Sidebar from './components/parts/Sidebar';
 import Classbar from './components/parts/Classbar'; // Import the Sidebar component
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -123,6 +124,19 @@ function App() {
                   <Classbar />
                   <div className="flex-1">
                     <Chat />
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/class/:batchId/results-certificate"
+            element={
+              <ProtectedRoute>
+                <div className="flex">
+                  <Classbar />
+                  <div className="flex-1">
+                    <ResultsAndCertificate />
                   </div>
                 </div>
               </ProtectedRoute>

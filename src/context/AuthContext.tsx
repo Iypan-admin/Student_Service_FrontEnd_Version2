@@ -24,6 +24,7 @@ const AuthContext = createContext<AuthContextType>({
 // Function to decode the JWT token
 const decodeToken = (token: string): TokenPayload | null => {
   try {
+    console.log('decodeToken - raw token:', token);
     const base64Url = token.split('.')[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(
@@ -32,7 +33,9 @@ const decodeToken = (token: string): TokenPayload | null => {
         .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
     );
-    return JSON.parse(jsonPayload);
+    const decoded = JSON.parse(jsonPayload);
+    console.log('decodeToken - decoded payload:', decoded);
+    return decoded;
   } catch (error) {
     console.error('Error decoding token:', error);
     return null;

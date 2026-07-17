@@ -181,9 +181,10 @@ const RegisterForm = (props: RegisterFormProps = {}) => {
     try {
       await register(formData);
       setShowSuccessModal(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      toast.error('Registration failed. Please try again.');
+      const serverMessage = error.response?.data?.error || error.message || 'Registration failed. Please try again.';
+      toast.error(serverMessage);
     }
   };
 

@@ -26,6 +26,22 @@ const API = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// Auto-handle 401 Unauthorized (Expired Session)
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      console.warn("🔒 Session expired (401). Redirecting to login...");
+      localStorage.removeItem("token");
+      localStorage.removeItem("tokenData");
+      if (!window.location.pathname.includes("/login")) {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ------------------------ AUTH ------------------------
 export const register = async (data: RegisterData): Promise<AuthResponse> => {
   const response = await API.post("/students/register", data);

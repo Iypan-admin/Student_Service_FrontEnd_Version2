@@ -505,11 +505,11 @@ const Payments: React.FC<PaymentsProps> = ({ isEmbedded = false }) => {
         if (isInitialLoad && newEnrollments.length > 0 && !selectedEnrollmentId) {
           setSelectedEnrollmentId(newEnrollments[0].enrollment_id);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to fetch enrollments:", error);
-        // Only show error on initial load, not during polling
-        if (isInitialLoad) {
-          toast.error("Failed to load enrolled batches.");
+        // Only show error on initial load (if not 401 expired session)
+        if (isInitialLoad && error.response?.status !== 401) {
+          toast.error("Failed to load enrolled batches. Please refresh.");
         }
       } finally {
         if (isInitialLoad) {

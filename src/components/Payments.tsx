@@ -652,22 +652,22 @@ const Payments: React.FC<PaymentsProps> = ({ isEmbedded = false }) => {
       return;
     }
 
-    // Filter transactions for the currently selected enrollment ONLY
+    // Filter transactions for the currently selected enrollment (or legacy/missing)
     const relevantTxns = transactions.filter(
-      (txn) => txn.enrollment_id === selectedEnrollmentId
+      (txn) => !txn.enrollment_id || txn.enrollment_id === selectedEnrollmentId
     );
 
     // Check if full payment is completed for THIS batch ONLY
     // Must be payment_type='full' AND status=true
     const fullPaid = relevantTxns.some(
-      (txn) => txn.payment_type === "full" && txn.status === true
+      (txn) => txn.payment_type === "full" && (txn.status === true || (txn as any).status === "true" || (txn as any).status === 1)
     );
     
     // Get paid EMI months for THIS batch ONLY
     const emiPaid = relevantTxns.filter(
-      (txn) => txn.payment_type === "emi" && txn.status === true
+      (txn) => (txn.payment_type === "emi" || (txn.current_emi && Number(txn.current_emi) > 0)) && (txn.status === true || (txn as any).status === "true" || (txn as any).status === 1)
     );
-    const paidEmiMonths = emiPaid.map((e) => e.current_emi || 0);
+    const paidEmiMonths = emiPaid.map((e) => Number(e.current_emi) || 0).filter(m => m > 0);
 
     // If enrollment changed, reset all states (clean slate for new batch)
     if (isEnrollmentChange) {
@@ -1357,21 +1357,17 @@ const Payments: React.FC<PaymentsProps> = ({ isEmbedded = false }) => {
                                       // Adjust first or last payment to include difference to ensure total = finalFees
                                       let monthlyAmount = emiAmount;
                                       if (difference !== 0) {
-                                        if (difference > 0) {
-                                          // Add difference to last payment
-                                          monthlyAmount = month === emiMonths ? emiAmount + difference : emiAmount;
-                                        } else {
-                                          // Subtract difference from first payment (difference is negative)
-                                          monthlyAmount = month === 1 ? emiAmount + difference : emiAmount;
+                                    monthlyAmount = month === 1 ? emiAmount + difference : emiAmount;
                                         }
                                       }
-                                const isPaid = paidMonths.includes(month);
-                                const lastPaid =
-                                  paidMonths.length > 0
-                                    ? Math.max(...paidMonths)
-                                    : 0;
-                                const isNextPayMonth = month === lastPaid + 1;
-                                const isDisabled = isPaid || !isNextPayMonth;
+                                      const numPaidMonths = paidMonths.map(Number);
+                                      const isPaid = numPaidMonths.includes(Number(month));
+                                      const lastPaid =
+                                        numPaidMonths.length > 0
+                                          ? Math.max(...numPaidMonths)
+                                          : 0;
+                                      const isNextPayMonth = Number(month) === lastPaid + 1;
+                                      const isDisabled = isPaid || !isNextPayMonth;
 
                                 return (
                                   <div
@@ -2245,13 +2241,13 @@ const Payments: React.FC<PaymentsProps> = ({ isEmbedded = false }) => {
                                         monthlyAmount = month === emiMonths ? emiAmount + difference : emiAmount;
                                       } else {
                                         // Subtract difference from first payment (difference is negative)
-                                        monthlyAmount = month === 1 ? emiAmount + difference : emiAmount;
                                       }
                                     }
-                              const isPaid = paidMonths.includes(month);
-                              const lastPaid = paidMonths.length > 0 ? Math.max(...paidMonths) : 0;
-                              const isNextPayMonth = month === lastPaid + 1;
-                              const isDisabled = isPaid || !isNextPayMonth;
+                                    const numPaidMonths2 = paidMonths.map(Number);
+                                    const isPaid = numPaidMonths2.includes(Number(month));
+                                    const lastPaid = numPaidMonths2.length > 0 ? Math.max(...numPaidMonths2) : 0;
+                                    const isNextPayMonth = Number(month) === lastPaid + 1;
+                                    const isDisabled = isPaid || !isNextPayMonth;
 
                               return (
                                 <div

@@ -23,21 +23,15 @@ import {
   HardDrive,
   CheckCircle,
   PlayCircle,
-  BookOpen,
-  ShieldCheck,
-  Lock,
-  ShieldAlert
+  BookOpen
 } from 'lucide-react';
 import Classbar from '../components/parts/Classbar';
 import { getBatchRecordings, getRecordingStreamUrl, LiveClassRecording } from '../services/liveClassApi';
-import { useAuth } from '../context/AuthContext';
-import { SecureMediaProtection } from '../components/security/SecureMediaProtection';
 import toast from 'react-hot-toast';
 
 export const StudentBatchRecordingsPage: React.FC = () => {
   const { batchId } = useParams<{ batchId: string }>();
   const navigate = useNavigate();
-  const { tokenData, studentDetails } = useAuth();
 
   const [recordings, setRecordings] = useState<LiveClassRecording[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,16 +39,6 @@ export const StudentBatchRecordingsPage: React.FC = () => {
   const [selectedRecording, setSelectedRecording] = useState<LiveClassRecording | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [loadingStream, setLoadingStream] = useState(false);
-
-  // Disable right-click across the recordings page to prevent downloading / inspect element
-  useEffect(() => {
-    const handleContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      return false;
-    };
-    document.addEventListener('contextmenu', handleContextMenu);
-    return () => document.removeEventListener('contextmenu', handleContextMenu);
-  }, []);
 
   // Video Player Controls State
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -278,38 +262,14 @@ export const StudentBatchRecordingsPage: React.FC = () => {
     }
   };
 
-  // Synchronize fullscreen state with browser events (Esc key, F11, or browser exit)
-  useEffect(() => {
-    const handleFsChange = () => {
-      const fs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-      setIsFullscreen(fs);
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    document.addEventListener('webkitfullscreenchange', handleFsChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFsChange);
-      document.removeEventListener('webkitfullscreenchange', handleFsChange);
-    };
-  }, []);
-
   const toggleFullscreen = () => {
-    const elem = playerContainerRef.current;
-    if (!elem) return;
-    const isFs = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-    if (!isFs) {
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch((err) => console.warn('Fullscreen error:', err));
-      } else if ((elem as any).webkitRequestFullscreen) {
-        (elem as any).webkitRequestFullscreen();
-      } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
-        (videoRef.current as any).webkitEnterFullscreen();
-      }
+    if (!playerContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      playerContainerRef.current.requestFullscreen().catch((err) => console.error(err));
+      setIsFullscreen(true);
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch((err) => console.warn('Exit fullscreen error:', err));
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      }
+      document.exitFullscreen().catch((err) => console.error(err));
+      setIsFullscreen(false);
     }
   };
 
@@ -387,7 +347,7 @@ export const StudentBatchRecordingsPage: React.FC = () => {
       if (b && b.length > 0) {
         return Math.min(100, Math.max(0, (b.end(b.length - 1) / effectiveDuration) * 100));
       }
-    } catch (e) {}
+    } catch (e) { }
     return 0;
   };
   const bufferedPercent = getBufferedPercent();
@@ -575,36 +535,21 @@ export const StudentBatchRecordingsPage: React.FC = () => {
 
       {/* Modern Custom Video Player Modal (NEET Platform standard) */}
       {selectedRecording && (
-        <div
-          className={`fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center animate-fadeIn ${
-            isFullscreen ? 'p-0 bg-black' : 'p-2 sm:p-6'
-          }`}
-        >
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-2 sm:p-6 animate-fadeIn">
           <div
             ref={playerContainerRef}
             onMouseMove={handleMouseMove}
-            className={`w-full bg-black flex flex-col relative group transition-all duration-150 ${
-              isFullscreen
-                ? '!fixed !inset-0 !w-screen !h-screen !max-w-none !rounded-none !z-[9999] !m-0 !p-0 !border-none'
-                : 'max-w-5xl rounded-3xl overflow-hidden shadow-2xl border border-slate-800'
-            }`}
+            className="w-full max-w-5xl bg-black rounded-3xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col relative group"
           >
             {/* Player Top Bar Overlay */}
             <div
-              className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/85 via-black/50 to-transparent z-25 flex items-center justify-between transition-opacity duration-300 ${
-                showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              }`}
+              className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-20 flex items-center justify-between transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
             >
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-sm font-bold text-white tracking-wide truncate max-w-sm sm:max-w-md">
-                    {selectedRecording.live_class?.title || 'Recorded Lecture'}
-                  </h3>
-                  <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 backdrop-blur-sm">
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                    <span>Protected Lecture</span>
-                  </span>
-                </div>
+                <h3 className="text-sm font-bold text-white tracking-wide truncate max-w-lg">
+                  {selectedRecording.live_class?.title || 'Recorded Lecture'}
+                </h3>
                 <p className="text-xs text-slate-400">
                   Tutor: {selectedRecording.live_class?.tutor?.full_name || 'Academic Faculty'}
                 </p>
@@ -616,109 +561,67 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400 border border-slate-700/60 bg-slate-900/80 px-2.5 py-1 rounded-md hidden md:flex items-center gap-1.5 backdrop-blur-sm">
-                  <Lock className="w-3 h-3 text-blue-400" />
-                  <span>Recording & Download Prohibited</span>
-                </span>
-                <button
-                  onClick={handleClosePlayer}
-                  className="p-2 hover:bg-white/10 text-white rounded-full transition-colors cursor-pointer"
-                  title="Close player (ESC)"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              <button
+                onClick={handleClosePlayer}
+                className="p-2 hover:bg-white/10 text-white rounded-full transition-colors"
+                title="Close player (ESC)"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Video Stage with Dynamic Watermark & Anti-Capture Protection */}
-            <div
-              className={`relative w-full bg-black flex items-center justify-center select-none overflow-hidden ${
-                isFullscreen ? '!h-full !flex-1' : 'aspect-video'
-              }`}
-            >
-              <SecureMediaProtection
-                isActive={!!selectedRecording && !!streamUrl}
-                studentInfo={{
-                  name: studentDetails?.name,
-                  studentId: tokenData?.student_id,
-                  email: studentDetails?.email,
-                  phone: studentDetails?.phone,
-                }}
-                onSecurityPause={() => {
-                  if (videoRef.current) {
-                    videoRef.current.pause();
-                    setIsPlaying(false);
-                  }
-                }}
-                onSecurityResume={() => {}}
-                enableMovingWatermark={true}
-                enableBlurShield={true}
-              >
-                {loadingStream ? (
-                  <div className="flex flex-col items-center justify-center text-white h-full">
-                    <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-3" />
-                    <p className="text-xs text-slate-400">Generating secure 2-hour encrypted stream URL...</p>
-                  </div>
-                ) : streamUrl ? (
-                  <>
-                    <video
-                      ref={videoRef}
-                      src={streamUrl}
-                      onClick={togglePlay}
-                      onDoubleClick={toggleFullscreen}
-                      onTimeUpdate={handleTimeUpdate}
-                      controlsList="nodownload noremoteplayback"
-                      disablePictureInPicture
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return false;
-                      }}
-                      onDragStart={(e) => {
-                        e.preventDefault();
-                        return false;
-                      }}
-                      onLoadedMetadata={(e) => {
-                        handleLoadedMetadata();
-                        e.currentTarget.volume = volume;
-                        e.currentTarget.muted = isMuted;
-                      }}
-                      onPlay={(e) => {
-                        e.currentTarget.volume = volume;
-                        e.currentTarget.muted = isMuted;
-                      }}
-                      onEnded={() => setIsPlaying(false)}
-                      onError={(e) => {
-                        console.error("Recording video stream playback error:", e);
-                        toast.error("Video stream playback error. Please check your connection.");
-                      }}
-                      className="w-full h-full object-contain cursor-pointer select-none"
-                      playsInline
-                    />
+            {/* Video Stage */}
+            <div className="relative w-full aspect-video bg-black flex items-center justify-center">
+              {loadingStream ? (
+                <div className="flex flex-col items-center justify-center text-white">
+                  <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-3" />
+                  <p className="text-xs text-slate-400">Generating secure 2-hour signed stream URL...</p>
+                </div>
+              ) : streamUrl ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    src={streamUrl}
+                    onClick={togglePlay}
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadedMetadata={(e) => {
+                      handleLoadedMetadata();
+                      e.currentTarget.volume = volume;
+                      e.currentTarget.muted = isMuted;
+                    }}
+                    onPlay={(e) => {
+                      e.currentTarget.volume = volume;
+                      e.currentTarget.muted = isMuted;
+                    }}
+                    onEnded={() => setIsPlaying(false)}
+                    onError={(e) => {
+                      console.error("Recording video stream playback error:", e);
+                      toast.error("Video stream playback error. Please check your connection.");
+                    }}
+                    className="w-full h-full object-contain cursor-pointer"
+                    playsInline
+                  />
 
-                    {/* Big Play Button Overlay when Paused */}
-                    {!isPlaying && (
-                      <button
-                        onClick={togglePlay}
-                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full bg-blue-600/90 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform z-30"
-                      >
-                        <Play className="w-8 h-8 fill-white ml-1" />
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-red-400 text-sm">Failed to load video stream.</div>
-                )}
-              </SecureMediaProtection>
+                  {/* Big Play Button Overlay when Paused */}
+                  {!isPlaying && (
+                    <button
+                      onClick={togglePlay}
+                      className="absolute w-20 h-20 rounded-full bg-blue-600/90 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform"
+                    >
+                      <Play className="w-8 h-8 fill-white ml-1" />
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div className="text-red-400 text-sm">Failed to load video stream.</div>
+              )}
             </div>
 
             {/* Bottom Controls Bar Overlay */}
             {streamUrl && (
               <div
-                className={`absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-4 z-20 transition-opacity duration-300 ${
-                  showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                }`}
+                className={`absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-4 z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
               >
                 {/* Interactive Progress / Seek Bar */}
                 <div
@@ -839,11 +742,10 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                         <button
                           key={s}
                           onClick={() => changePlaybackSpeed(s)}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                            playbackSpeed === s
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${playbackSpeed === s
                               ? 'bg-blue-600 text-white'
                               : 'text-slate-400 hover:text-white'
-                          }`}
+                            }`}
                         >
                           {s}x
                         </button>

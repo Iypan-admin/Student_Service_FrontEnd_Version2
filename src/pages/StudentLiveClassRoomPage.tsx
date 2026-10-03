@@ -81,14 +81,14 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (liveClass?.actual_start) {
+      const diff = Math.floor((Date.now() - new Date(liveClass.actual_start).getTime()) / 1000);
+      return Math.max(0, diff);
+    }
     const saved = liveClass?.id && sessionStorage.getItem(`isml_student_start_${liveClass.id}`);
     if (saved) {
       const diff = Math.floor((Date.now() - parseInt(saved, 10)) / 1000);
-      if (diff >= 0 && diff < 3600) return diff;
-    }
-    if (liveClass?.actual_start) {
-      const diff = Math.floor((Date.now() - new Date(liveClass.actual_start).getTime()) / 1000);
-      if (diff >= 0 && diff < 3600) return diff;
+      return Math.max(0, diff);
     }
     return 0;
   });
@@ -98,39 +98,26 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
 
   const stageContainerRef = useRef<HTMLDivElement>(null);
 
-  // Resilient Timer - Continues seamlessly across refreshes, resets if stale (>60 mins)
+  // Resilient Timer - Continues seamlessly from actual start across refreshes
   useEffect(() => {
-    let startMs: number | null = null;
-    const saved = liveClass?.id && sessionStorage.getItem(`isml_student_start_${liveClass.id}`);
-    if (saved) {
-      const parsed = parseInt(saved, 10);
-      const diffSecs = Math.floor((Date.now() - parsed) / 1000);
-      if (diffSecs >= 0 && diffSecs < 3600) {
-        startMs = parsed;
-      }
-    }
-
-    if (!startMs && liveClass?.actual_start) {
-      const parsed = new Date(liveClass.actual_start).getTime();
-      const diffSecs = Math.floor((Date.now() - parsed) / 1000);
-      if (diffSecs >= 0 && diffSecs < 3600) {
-        startMs = parsed;
-      }
-    }
-
-    if (!startMs) {
-      startMs = Date.now();
-      if (liveClass?.id) {
+    let startMs = liveClass?.actual_start ? new Date(liveClass.actual_start).getTime() : null;
+    if (!startMs && liveClass?.id) {
+      const saved = sessionStorage.getItem(`isml_student_start_${liveClass.id}`);
+      if (saved) {
+        startMs = parseInt(saved, 10);
+      } else {
+        startMs = Date.now();
         sessionStorage.setItem(`isml_student_start_${liveClass.id}`, startMs.toString());
       }
     }
 
     const calcElapsed = () => {
-      const currentStart = (liveClass?.id && sessionStorage.getItem(`isml_student_start_${liveClass.id}`))
-        ? parseInt(sessionStorage.getItem(`isml_student_start_${liveClass.id}`)!, 10)
-        : startMs!;
-      const secs = Math.max(0, Math.floor((Date.now() - currentStart) / 1000));
-      setElapsedSeconds(secs);
+      if (startMs) {
+        const secs = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+        setElapsedSeconds(secs);
+      } else {
+        setElapsedSeconds((prev) => prev + 1);
+      }
     };
 
     calcElapsed();
@@ -164,8 +151,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     if (!room || room.state !== 'connected' || !room.localParticipant) return;
     try {
       const payload = new TextEncoder().encode(JSON.stringify({ type: 'REQUEST_SYNC' }));
-      room.localParticipant.publishData(payload, { reliable: true }).catch(() => {});
-    } catch (e) {}
+      room.localParticipant.publishData(payload, { reliable: true }).catch(() => { });
+    } catch (e) { }
   }, [room]);
 
   // Speaking state detection for animated aura rings
@@ -225,11 +212,6 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             setIsHandRaised(false);
             toast('Your hand was acknowledged by the instructor ✋');
           }
-        } else if (data.type === 'TIMER_RESET') {
-          if (liveClass?.id && data.startMs) {
-            sessionStorage.setItem(`isml_student_start_${liveClass.id}`, data.startMs.toString());
-            setElapsedSeconds(0);
-          }
         }
       } catch (err) {
         console.error('Error parsing room data message', err);
@@ -261,7 +243,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       });
       try {
         if (room && room.state === 'connected' && room.localParticipant) {
-          await room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => {});
+          await room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => { });
         }
         toast.success('Hand raised! The tutor has been notified.');
       } catch (err) {
@@ -276,7 +258,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       });
       try {
         if (room && room.state === 'connected' && room.localParticipant) {
-          await room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => {});
+          await room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => { });
         }
       } catch (err) {
         console.error(err);
@@ -365,11 +347,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
           <div className="flex items-center p-0.5 sm:p-1 bg-slate-800/90 rounded-xl sm:rounded-2xl border border-slate-700/60 shadow-inner">
             <button
               onClick={() => setActiveView('stage')}
-              className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeView === 'stage'
+              className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${activeView === 'stage'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
               title="Classroom Stage"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -378,11 +359,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
 
             <button
               onClick={() => setActiveView('whiteboard')}
-              className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer relative ${
-                activeView === 'whiteboard'
+              className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer relative ${activeView === 'whiteboard'
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
               title="Whiteboard"
             >
               <PenTool className="w-3.5 h-3.5" />
@@ -424,22 +404,20 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             <div className="w-full h-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 items-stretch justify-center">
               {/* Tile 1: Tutor / Instructor Primary Tile */}
               <div
-                className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${
-                  isTutorSpeaking
+                className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${isTutorSpeaking
                     ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
                     : 'border border-slate-800'
-                }`}
+                  }`}
               >
                 {tutorTrack ? (
                   <VideoTrack trackRef={tutorTrack} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-center p-4 sm:p-6 flex flex-col items-center justify-center">
                     <div
-                      className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mb-2 sm:mb-4 shadow-xl transition-all ${
-                        isTutorSpeaking
+                      className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mb-2 sm:mb-4 shadow-xl transition-all ${isTutorSpeaking
                           ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 scale-110 shadow-emerald-500/50'
                           : 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white'
-                      }`}
+                        }`}
                     >
                       <span className="text-2xl sm:text-4xl font-bold">
                         {tutorDisplayName[0]?.toUpperCase() || 'T'}
@@ -481,13 +459,12 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
 
               {/* Tile 2: Local Student (You) Tile */}
               <div
-                className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${
-                  isHandRaised
+                className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${isHandRaised
                     ? 'border-2 border-amber-500 ring-4 ring-amber-500/30 shadow-amber-500/20 shadow-2xl'
                     : isLocalSpeaking
-                    ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
-                    : 'border border-slate-800'
-                }`}
+                      ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
+                      : 'border border-slate-800'
+                  }`}
               >
                 {/* Hand Raised Floating Badge */}
                 {isHandRaised && (
@@ -502,11 +479,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 ) : (
                   <div className="text-center p-4 sm:p-6 flex flex-col items-center justify-center">
                     <div
-                      className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mb-2 sm:mb-4 shadow-xl transition-all ${
-                        isLocalSpeaking
+                      className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mb-2 sm:mb-4 shadow-xl transition-all ${isLocalSpeaking
                           ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 scale-110'
                           : 'bg-slate-800 border border-slate-700 text-slate-200'
-                      }`}
+                        }`}
                     >
                       <span className="text-2xl sm:text-4xl font-bold">
                         {(localParticipant.name || 'S')[0]?.toUpperCase() || 'Y'}
@@ -538,9 +514,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {activeView === 'whiteboard' && (
           <div className="flex-1 p-0 sm:p-2 md:p-4 flex flex-col items-center justify-center overflow-hidden relative">
             <div
-              className={`w-full h-full max-h-full sm:max-h-[84vh] rounded-none sm:rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl relative border-0 sm:border flex flex-col items-center justify-center transition-all ${
-                remoteBoardTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-[#f8fafc] border-slate-300'
-              }`}
+              className={`w-full h-full max-h-full sm:max-h-[84vh] rounded-none sm:rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl relative border-0 sm:border flex flex-col items-center justify-center transition-all ${remoteBoardTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-[#f8fafc] border-slate-300'
+                }`}
             >
               {/* Subtle Grid Pattern */}
               <div
@@ -590,9 +565,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 ) : (
                   <div className="text-center p-1.5 sm:p-2">
                     <div
-                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mx-auto mb-1 text-xs sm:text-sm font-bold ${
-                        isTutorSpeaking ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-blue-600 text-white'
-                      }`}
+                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mx-auto mb-1 text-xs sm:text-sm font-bold ${isTutorSpeaking ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-blue-600 text-white'
+                        }`}
                     >
                       {tutorDisplayName[0]?.toUpperCase() || 'T'}
                     </div>
@@ -700,11 +674,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {/* Mic Toggle */}
         <button
           onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
-          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
-            isMicrophoneEnabled
+          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isMicrophoneEnabled
               ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
               : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
-          }`}
+            }`}
           title={isMicrophoneEnabled ? 'Mute Microphone' : 'Unmute Microphone'}
         >
           {isMicrophoneEnabled ? <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" /> : <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />}
@@ -713,11 +686,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {/* Camera Toggle */}
         <button
           onClick={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
-          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
-            isCameraEnabled
+          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isCameraEnabled
               ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
               : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
-          }`}
+            }`}
           title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
         >
           {isCameraEnabled ? <VideoIcon className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" /> : <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" />}
@@ -728,11 +700,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {/* Switch View Toggle */}
         <button
           onClick={() => setActiveView((prev) => (prev === 'stage' ? 'whiteboard' : 'stage'))}
-          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${
-            activeView === 'whiteboard'
+          className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${activeView === 'whiteboard'
               ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
               : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
-          }`}
+            }`}
         >
           {activeView === 'whiteboard' ? <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <PenTool className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           <span className="sm:hidden">{activeView === 'whiteboard' ? 'Stage' : 'Board'}</span>
@@ -742,11 +713,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {/* Raise Hand Button */}
         <button
           onClick={toggleRaiseHand}
-          className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-semibold transition-all cursor-pointer ${
-            isHandRaised
+          className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-semibold transition-all cursor-pointer ${isHandRaised
               ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30 scale-105'
               : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
-          }`}
+            }`}
         >
           <Hand className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span className="sm:hidden">✋</span>
@@ -756,11 +726,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {/* Toggle Attendees */}
         <button
           onClick={() => setShowAttendees(!showAttendees)}
-          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center relative transition-all cursor-pointer ${
-            showAttendees
+          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center relative transition-all cursor-pointer ${showAttendees
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-          }`}
+            }`}
           title="Class participants"
         >
           <Users className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -848,8 +817,8 @@ export const StudentLiveClassRoomPage: React.FC = () => {
       const nowMs = Date.now();
 
       // Check if there is an active LIVE class or currently in-session scheduled class
-      const live = classes.find((c) => 
-        (c.status === 'LIVE' || (c.status === 'SCHEDULED' && nowMs >= new Date(c.scheduled_start).getTime())) && 
+      const live = classes.find((c) =>
+        (c.status === 'LIVE' || (c.status === 'SCHEDULED' && nowMs >= new Date(c.scheduled_start).getTime())) &&
         nowMs <= new Date(c.scheduled_end).getTime()
       );
       if (live) {

@@ -217,6 +217,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
               setActiveView('stage');
             }
           }
+        } else if (data.type === 'CLASS_ENDED') {
+          toast('The instructor has ended this live class session.', { icon: '👋', duration: 4000 });
+          onLeave();
+          return;
         } else if (data.type === 'CHAT') {
           setChatMessages((prev) => [
             ...prev,
@@ -738,7 +742,13 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       <div className="h-14 sm:h-18 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex items-center justify-between sm:justify-center px-2 sm:px-6 gap-1 sm:gap-3 z-30 shrink-0">
         {/* Mic Toggle */}
         <button
-          onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+          onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 48000,
+            channelCount: 1
+          })}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isMicrophoneEnabled
               ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
               : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
@@ -821,6 +831,23 @@ export const StudentLiveClassRoomPage: React.FC = () => {
   const [waitingStatus, setWaitingStatus] = useState<'IDLE' | 'PENDING' | 'APPROVED' | 'REJECTED'>('IDLE');
   const [error, setError] = useState<string | null>(null);
 
+  const roomOptions = React.useMemo(() => ({
+    audioCaptureDefaults: {
+      autoGainControl: true,
+      echoCancellation: true,
+      noiseSuppression: true,
+      sampleRate: 48000,
+      channelCount: 1
+    },
+    publishDefaults: {
+      audioPreset: {
+        maxBitrate: 64000
+      },
+      dtx: false,
+      red: true
+    }
+  }), []);
+
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const stopPolling = () => {
@@ -883,8 +910,10 @@ export const StudentLiveClassRoomPage: React.FC = () => {
 
       // Check if there is an active LIVE class or currently in-session scheduled class
       const live = classes.find((c) =>
-        (c.status === 'LIVE' || (c.status === 'SCHEDULED' && nowMs >= new Date(c.scheduled_start).getTime())) &&
-        nowMs <= new Date(c.scheduled_end).getTime()
+        c.status === 'LIVE' ||
+        (c.status === 'SCHEDULED' &&
+          nowMs >= new Date(c.scheduled_start).getTime() &&
+          nowMs <= new Date(c.scheduled_end).getTime())
       );
       if (live) {
         setActiveLiveClass(live);
@@ -1057,6 +1086,7 @@ export const StudentLiveClassRoomPage: React.FC = () => {
         connect={true}
         video={false}
         audio={false}
+        options={roomOptions}
         onDisconnected={handleLeaveClass}
         data-lk-theme="default"
       >

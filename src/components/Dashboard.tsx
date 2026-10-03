@@ -1127,22 +1127,23 @@ const Dashboard = () => {
                     .filter(c => {
                       const startMs = new Date(c.scheduled_start).getTime();
                       const endMs = new Date(c.scheduled_end).getTime();
-                      const isPast = currentTimeMs > endMs;
-                      const inSlot = currentTimeMs >= startMs && !isPast;
+                      const isLive = c.status === 'LIVE';
+                      const isPast = !isLive && (c.status === 'COMPLETED' || currentTimeMs > endMs + 60 * 60 * 1000);
+                      const inSlot = isLive || (currentTimeMs >= startMs - 15 * 60 * 1000 && !isPast);
                       if (liveClassFilter === 'all') return true;
-                      if (liveClassFilter === 'LIVE') return (c.status === 'LIVE' || inSlot) && !isPast;
-                      if (liveClassFilter === 'SCHEDULED') return c.status === 'SCHEDULED' && !inSlot && !isPast;
+                      if (liveClassFilter === 'LIVE') return isLive || inSlot;
+                      if (liveClassFilter === 'SCHEDULED') return c.status === 'SCHEDULED' && !isPast;
                       if (liveClassFilter === 'COMPLETED') return c.status === 'COMPLETED' || isPast;
                       return true;
                     })
                     .map(item => {
                       const startMs = new Date(item.scheduled_start).getTime();
                       const endMs = new Date(item.scheduled_end).getTime();
-                      const isExpired = currentTimeMs > endMs;
-                      const isLive = item.status === 'LIVE' && !isExpired;
-                      const isInSlot = currentTimeMs >= startMs && !isExpired;
-                      const canJoin = (isLive || (item.status === 'SCHEDULED' && isInSlot)) && !isExpired;
-                      const isCompleted = item.status === 'COMPLETED' || (isExpired && !isInSlot);
+                      const isLive = item.status === 'LIVE';
+                      const isInSlot = currentTimeMs >= startMs - 15 * 60 * 1000 && currentTimeMs <= endMs + 60 * 60 * 1000;
+                      const isExpired = !isLive && (item.status === 'COMPLETED' || currentTimeMs > endMs + 60 * 60 * 1000);
+                      const canJoin = isLive || (item.status === 'SCHEDULED' && isInSlot);
+                      const isCompleted = item.status === 'COMPLETED' && !isLive;
 
                       return (
                         <div

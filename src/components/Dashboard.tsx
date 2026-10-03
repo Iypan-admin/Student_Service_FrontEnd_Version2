@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Sparkles, Users, BookOpen, Clock, GraduationCap, Filter, ArrowUpDown, CheckCircle2, Clock3, ArrowRight, Calendar, Video, User, Menu, X, Settings, LogOut } from "lucide-react";
+import { Sparkles, Users, BookOpen, Clock, GraduationCap, Filter, ArrowUpDown, CheckCircle2, Clock3, ArrowRight, Calendar, Video, User, Menu, X, Settings, LogOut, Radio, PlayCircle, Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, Minimize, FileVideo, HardDrive, Search, RefreshCw, AlertCircle, ExternalLink, Lock, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import Sidebar from "./parts/Sidebar";
 import BatchCard from "./BatchCard";
@@ -9,12 +9,57 @@ import StudentProfileModal from "./StudentProfileModal";
 import ForgetPasswordModal from "./ForgetPasswordModal";
 import Payments from "./Payments";
 import NotificationBell from "./NotificationBell";
+import SecureMediaProtection from "./security/SecureMediaProtection";
 import {
   getStudentDetails,
   getEnrolledBatches,
   getBatches,
 } from "../services/api";
+import { getLiveClasses, getBatchRecordings, getRecordingStreamUrl, LiveClass, LiveClassRecording } from "../services/liveClassApi";
 import { Enrollment, Batch } from "../types/auth";
+import toast from "react-hot-toast";
+
+const formatDuration = (seconds?: number) => {
+  if (!seconds || seconds <= 0) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+};
+
+const formatFileSize = (bytes?: number) => {
+  if (!bytes || bytes <= 0) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(1)} MB`;
+};
+
+// Asia/Kolkata (IST) Time and Date Formatters
+const formatISTTime = (isoString?: string) => {
+  if (!isoString) return '';
+  try {
+    return new Date(isoString).toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }) + ' IST';
+  } catch (_) {
+    return '';
+  }
+};
+
+const formatISTDate = (isoString?: string) => {
+  if (!isoString) return '';
+  try {
+    return new Date(isoString).toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (_) {
+    return '';
+  }
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -53,6 +98,24 @@ const Dashboard = () => {
   // Enrollment view filters
   const [enrollmentFilter, setEnrollmentFilter] = useState<'all' | 'active' | 'pending'>('all');
   const [enrollmentSort, setEnrollmentSort] = useState<'newest' | 'oldest' | 'name'>('newest');
+
+  // Live Classes & Cloud Recordings States
+  const [liveClasses, setLiveClasses] = useState<LiveClass[]>([]);
+  const [recordings, setRecordings] = useState<LiveClassRecording[]>([]);
+  const [loadingLive, setLoadingLive] = useState(false);
+  const [loadingRecordings, setLoadingRecordings] = useState(false);
+  const [selectedRecording, setSelectedRecording] = useState<LiveClassRecording | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [loadingStream, setLoadingStream] = useState(false);
+  const [liveClassFilter, setLiveClassFilter] = useState<'all' | 'LIVE' | 'SCHEDULED' | 'COMPLETED'>('all');
+  const [recordingSearchQuery, setRecordingSearchQuery] = useState('');
+
+  // Real-time ticker to auto-disable live class buttons exactly on schedule expiry (Asia/Kolkata)
+  const [currentTimeMs, setCurrentTimeMs] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTimeMs(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 🔹 Fetch student details
   useEffect(() => {
@@ -136,6 +199,76 @@ const Dashboard = () => {
         console.error("❌ Failed to fetch available batches:", err);
       });
   }, [studentDetails?.center, studentDetails?.student_id]);
+
+  // 🔹 Fetch live classes & recordings for all active enrolled batches
+  useEffect(() => {
+    const activeBatchIds = enrollments
+      .filter((e) => e.status && e.batches?.batch_id)
+      .map((e) => e.batches.batch_id);
+
+    if (activeBatchIds.length === 0) {
+      setLiveClasses([]);
+      setRecordings([]);
+      return;
+    }
+
+    const fetchLiveAndRecordings = async () => {
+      try {
+        // Fetch live classes across all batches
+        const livePromises = activeBatchIds.map((batchId) =>
+          getLiveClasses({ batch_id: batchId }).catch(() => [] as LiveClass[])
+        );
+        const liveResults = await Promise.all(livePromises);
+        const allLive = liveResults.flat();
+        allLive.sort((a, b) => {
+          if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
+          if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
+          return new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime();
+        });
+        setLiveClasses(allLive);
+
+        // Fetch recordings across all batches
+        const recPromises = activeBatchIds.map((batchId) =>
+          getBatchRecordings(batchId).catch(() => [] as LiveClassRecording[])
+        );
+        const recResults = await Promise.all(recPromises);
+        const allRec = recResults.flat();
+        allRec.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setRecordings(allRec);
+      } catch (err) {
+        console.error("Failed to load live sessions or recordings:", err);
+      }
+    };
+
+    fetchLiveAndRecordings();
+    const interval = setInterval(fetchLiveAndRecordings, 5000);
+    const handleFocus = () => fetchLiveAndRecordings();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [enrollments]);
+
+  // 🔹 Play Recording Stream Modal
+  const handleWatchRecording = async (rec: LiveClassRecording) => {
+    setSelectedRecording(rec);
+    setLoadingStream(true);
+    try {
+      const res = await getRecordingStreamUrl(rec.id);
+      setStreamUrl(res.streamUrl);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load video stream');
+      setSelectedRecording(null);
+    } finally {
+      setLoadingStream(false);
+    }
+  };
+
+  const handleClosePlayer = () => {
+    setSelectedRecording(null);
+    setStreamUrl(null);
+  };
 
 
   // 🔹 Open class if active
@@ -320,6 +453,61 @@ const Dashboard = () => {
           {/* 🔹 VIEW: DASHBOARD - Available Batches for Enrollment */}
           {currentView === 'dashboard' && (
             <>
+              {/* 🔴 Active Live Sessions Alert Banner (LIVE status or in-session scheduled slot) */}
+              {liveClasses.filter((c) => {
+                const startMs = new Date(c.scheduled_start).getTime();
+                const endMs = new Date(c.scheduled_end).getTime();
+                const isExpired = currentTimeMs > endMs;
+                const inSlot = currentTimeMs >= startMs && !isExpired;
+                return (c.status === 'LIVE' || inSlot) && !isExpired;
+              }).length > 0 && (
+                <div className="mb-8 space-y-4">
+                  {liveClasses.filter((c) => {
+                    const startMs = new Date(c.scheduled_start).getTime();
+                    const endMs = new Date(c.scheduled_end).getTime();
+                    const isExpired = currentTimeMs > endMs;
+                    const inSlot = currentTimeMs >= startMs && !isExpired;
+                    return (c.status === 'LIVE' || inSlot) && !isExpired;
+                  }).map((activeClass) => (
+                    <div
+                      key={activeClass.id}
+                      className="relative overflow-hidden bg-gradient-to-r from-red-600 via-rose-600 to-indigo-700 rounded-2xl p-6 text-white shadow-xl border border-red-400/40 flex flex-col md:flex-row items-center justify-between gap-6"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30">
+                          <Radio className="w-8 h-8 text-white animate-pulse" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-white text-red-600 shadow-sm animate-pulse">
+                              {activeClass.status === 'LIVE' ? '🔴 LIVE NOW' : '🔴 CLASS IN SESSION'}
+                            </span>
+                            <span className="text-xs text-red-100 font-semibold px-2 py-0.5 rounded-full bg-white/10">
+                              {activeClass.batch?.batch_name || 'Your Batch'}
+                            </span>
+                          </div>
+                          <h3 className="text-xl font-bold text-white tracking-tight">
+                            {activeClass.title}
+                          </h3>
+                          <p className="text-sm text-red-100 flex items-center gap-2 mt-1">
+                            <span>Tutor: <strong>{activeClass.tutor?.full_name || 'Instructor'}</strong></span>
+                            <span>•</span>
+                            <span>100% Online Interactive Studio</span>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate(`/class/${activeClass.batch_id}/live?roomId=${activeClass.room_name || activeClass.livekit_room_name}`)}
+                        className="shrink-0 px-6 py-3 bg-white text-red-600 font-bold rounded-xl shadow-lg hover:bg-red-50 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
+                      >
+                        <span>🚀 Join Live Classroom</span>
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {availableBatches.length > 0 ? (
             <div className="mb-12">
               {/* Header */}
@@ -774,6 +962,579 @@ const Dashboard = () => {
                 </>
               )}
             </>
+          )}
+
+          {/* 🔹 VIEW: LIVE CLASSES - 100% Online Live Class Hub */}
+          {currentView === 'live-classes' && (
+            <>
+              {/* Header Banner */}
+              <div className="relative bg-gradient-to-r from-blue-700 via-indigo-600 to-purple-700 rounded-2xl p-8 mb-8 shadow-xl overflow-hidden text-white">
+                <div className="absolute inset-0 opacity-10 pointer-events-none">
+                  <div className="absolute transform rotate-45 -top-10 -right-10 w-44 h-44 bg-white rounded-full"></div>
+                  <div className="absolute transform -rotate-45 -bottom-10 -left-10 w-36 h-36 bg-white rounded-full"></div>
+                </div>
+
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white/20 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 shadow-inner">
+                      <Radio className="w-8 h-8 text-white animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/20 text-white border border-white/30">
+                          100% Online Learning
+                        </span>
+                        {liveClasses.some(c => {
+                          const startMs = new Date(c.scheduled_start).getTime();
+                          const endMs = new Date(c.scheduled_end).getTime();
+                          const isExpired = currentTimeMs > endMs;
+                          const inSlot = currentTimeMs >= startMs && !isExpired;
+                          return (c.status === 'LIVE' || inSlot) && !isExpired;
+                        }) && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-red-500 text-white shadow-sm animate-pulse">
+                            🔴 Live Now
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="text-3xl font-extrabold tracking-tight">Live Classes Hub</h2>
+                      <p className="text-blue-100 text-sm mt-1">
+                        Attend live lectures, collaborate in real time with tutors and peers
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        const activeBatchIds = enrollments.filter(e => e.status && e.batches?.batch_id).map(e => e.batches.batch_id);
+                        if (activeBatchIds.length > 0) {
+                          Promise.all(activeBatchIds.map(bId => getLiveClasses({ batch_id: bId })))
+                            .then(res => setLiveClasses(res.flat()))
+                            .catch(() => {});
+                          toast.success('Live classes refreshed');
+                        }
+                      }}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-blue-100 font-medium">Live Right Now</p>
+                    <p className="text-2xl font-bold mt-1 text-red-300">
+                      {liveClasses.filter(c => {
+                        const startMs = new Date(c.scheduled_start).getTime();
+                        const endMs = new Date(c.scheduled_end).getTime();
+                        const isExpired = currentTimeMs > endMs;
+                        const inSlot = currentTimeMs >= startMs && !isExpired;
+                        return (c.status === 'LIVE' || inSlot) && !isExpired;
+                      }).length}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-blue-100 font-medium">Upcoming Scheduled</p>
+                    <p className="text-2xl font-bold mt-1 text-white">
+                      {liveClasses.filter(c => {
+                        const startMs = new Date(c.scheduled_start).getTime();
+                        const endMs = new Date(c.scheduled_end).getTime();
+                        return c.status === 'SCHEDULED' && currentTimeMs < startMs && currentTimeMs <= endMs;
+                      }).length}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-blue-100 font-medium">Completed Classes</p>
+                    <p className="text-2xl font-bold mt-1 text-emerald-300">
+                      {liveClasses.filter(c => c.status === 'COMPLETED' || currentTimeMs > new Date(c.scheduled_end).getTime()).length}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-blue-100 font-medium">Enrolled Batches</p>
+                    <p className="text-2xl font-bold mt-1 text-white">
+                      {enrollments.filter(e => e.status).length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Filters */}
+              <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
+                {[
+                  { id: 'all', label: 'All Sessions', count: liveClasses.length },
+                  {
+                    id: 'LIVE',
+                    label: '🔴 Live / In Session',
+                    count: liveClasses.filter(c => {
+                      const startMs = new Date(c.scheduled_start).getTime();
+                      const endMs = new Date(c.scheduled_end).getTime();
+                      const isExpired = currentTimeMs > endMs;
+                      const inSlot = currentTimeMs >= startMs && !isExpired;
+                      return (c.status === 'LIVE' || inSlot) && !isExpired;
+                    }).length
+                  },
+                  {
+                    id: 'SCHEDULED',
+                    label: '📅 Scheduled',
+                    count: liveClasses.filter(c => {
+                      const startMs = new Date(c.scheduled_start).getTime();
+                      const endMs = new Date(c.scheduled_end).getTime();
+                      return c.status === 'SCHEDULED' && currentTimeMs < startMs && currentTimeMs <= endMs;
+                    }).length
+                  },
+                  {
+                    id: 'COMPLETED',
+                    label: '✅ Completed',
+                    count: liveClasses.filter(c => c.status === 'COMPLETED' || currentTimeMs > new Date(c.scheduled_end).getTime()).length
+                  }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setLiveClassFilter(tab.id as any)}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2 cursor-pointer ${
+                      liveClassFilter === tab.id
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${
+                      liveClassFilter === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Classes List */}
+              {liveClasses.filter(c => {
+                const startMs = new Date(c.scheduled_start).getTime();
+                const endMs = new Date(c.scheduled_end).getTime();
+                const isPast = currentTimeMs > endMs;
+                const inSlot = currentTimeMs >= startMs && !isPast;
+                if (liveClassFilter === 'all') return true;
+                if (liveClassFilter === 'LIVE') return (c.status === 'LIVE' || inSlot) && !isPast;
+                if (liveClassFilter === 'SCHEDULED') return c.status === 'SCHEDULED' && !inSlot && !isPast;
+                if (liveClassFilter === 'COMPLETED') return c.status === 'COMPLETED' || isPast;
+                return true;
+              }).length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                  {liveClasses
+                    .filter(c => {
+                      const startMs = new Date(c.scheduled_start).getTime();
+                      const endMs = new Date(c.scheduled_end).getTime();
+                      const isPast = currentTimeMs > endMs;
+                      const inSlot = currentTimeMs >= startMs && !isPast;
+                      if (liveClassFilter === 'all') return true;
+                      if (liveClassFilter === 'LIVE') return (c.status === 'LIVE' || inSlot) && !isPast;
+                      if (liveClassFilter === 'SCHEDULED') return c.status === 'SCHEDULED' && !inSlot && !isPast;
+                      if (liveClassFilter === 'COMPLETED') return c.status === 'COMPLETED' || isPast;
+                      return true;
+                    })
+                    .map(item => {
+                      const startMs = new Date(item.scheduled_start).getTime();
+                      const endMs = new Date(item.scheduled_end).getTime();
+                      const isExpired = currentTimeMs > endMs;
+                      const isLive = item.status === 'LIVE' && !isExpired;
+                      const isInSlot = currentTimeMs >= startMs && !isExpired;
+                      const canJoin = (isLive || (item.status === 'SCHEDULED' && isInSlot)) && !isExpired;
+                      const isCompleted = item.status === 'COMPLETED' || (isExpired && !isInSlot);
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl ${
+                            canJoin ? 'border-red-400 ring-2 ring-red-400/30' : 'border-gray-200'
+                          }`}
+                        >
+                          {/* Card Top Banner / Status */}
+                          <div className={`p-4 border-b flex items-center justify-between ${
+                            canJoin ? 'bg-red-50 border-red-100' : isCompleted ? 'bg-emerald-50 border-emerald-100' : 'bg-blue-50 border-blue-100'
+                          }`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                              canJoin
+                                ? 'bg-red-600 text-white animate-pulse'
+                                : isCompleted
+                                ? 'bg-slate-700 text-white'
+                                : 'bg-blue-600 text-white'
+                            }`}>
+                              {canJoin && <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>}
+                              {canJoin ? (item.status === 'LIVE' ? 'LIVE NOW' : 'IN SESSION') : isExpired && item.status !== 'COMPLETED' ? 'SCHEDULE ENDED' : item.status}
+                            </span>
+                            <span className="text-xs font-semibold text-gray-600 truncate max-w-[150px]">
+                              {item.batch?.batch_name || 'Enrolled Batch'}
+                            </span>
+                          </div>
+
+                          {/* Body */}
+                          <div className="p-6 flex-1 flex flex-col justify-between">
+                            <div>
+                              <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
+                                {item.title}
+                              </h3>
+                              {item.description && (
+                                <p className="text-sm text-gray-500 mb-4 line-clamp-2">
+                                  {item.description}
+                                </p>
+                              )}
+
+                              <div className="space-y-2.5 my-4 text-sm text-gray-600">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-indigo-500 shrink-0" />
+                                  <span className="text-xs text-gray-500">Tutor:</span>
+                                  <span className="font-semibold text-gray-800">
+                                    {item.tutor?.full_name || 'Assigned Tutor'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
+                                  <span className="text-xs text-gray-500">Date:</span>
+                                  <span className="font-medium text-gray-800">
+                                    {formatISTDate(item.scheduled_start)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-purple-500 shrink-0" />
+                                  <span className="text-xs text-gray-500">Time:</span>
+                                  <span className="font-medium text-gray-800">
+                                    {formatISTTime(item.scheduled_start)} - {formatISTTime(item.scheduled_end)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Action Button */}
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                              {canJoin ? (
+                                <button
+                                  onClick={() => navigate(`/class/${item.batch_id}/live?roomId=${item.room_name || item.livekit_room_name}`)}
+                                  className="w-full py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-bold rounded-xl shadow-lg shadow-red-500/30 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer text-sm"
+                                >
+                                  <Radio className="w-4 h-4 animate-pulse" />
+                                  <span>🚀 Join Live Classroom</span>
+                                </button>
+                              ) : isExpired ? (
+                                <div className="space-y-2">
+                                  <button
+                                    disabled
+                                    className="w-full py-2.5 bg-gray-100 text-gray-400 font-semibold rounded-xl border border-gray-200 flex items-center justify-center gap-2 cursor-not-allowed text-xs sm:text-sm"
+                                    title={`Live session ended at ${formatISTTime(item.scheduled_end)}`}
+                                  >
+                                    <Lock className="w-4 h-4 text-gray-400" />
+                                    <span>Class Ended ({formatISTTime(item.scheduled_end)})</span>
+                                  </button>
+                                  <button
+                                    onClick={() => setCurrentView('recordings')}
+                                    className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl border border-indigo-200 flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer"
+                                  >
+                                    <PlayCircle className="w-3.5 h-3.5" />
+                                    <span>Watch Lecture Recording</span>
+                                  </button>
+                                </div>
+                              ) : isCompleted ? (
+                                <button
+                                  onClick={() => setCurrentView('recordings')}
+                                  className="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl border border-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
+                                >
+                                  <PlayCircle className="w-4 h-4" />
+                                  <span>Watch Lecture Recording</span>
+                                </button>
+                              ) : (
+                                <div className="w-full py-2.5 bg-gray-50 text-gray-500 font-medium rounded-xl border border-gray-200 text-center flex items-center justify-center gap-2 text-xs sm:text-sm">
+                                  <Clock3 className="w-4 h-4 text-gray-400" />
+                                  <span>Opens at {formatISTTime(item.scheduled_start)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <div className="text-center py-16 px-4 bg-white rounded-2xl border border-gray-200 shadow-sm mb-12">
+                  <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-4">
+                    <Radio className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">No Live Classes Found</h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    {liveClassFilter === 'all'
+                      ? 'No live classes are currently scheduled for your batches. When your academic coordinator or tutor schedules a class, it will appear here.'
+                      : `No classes currently marked as ${liveClassFilter}.`}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 🔹 VIEW: RECORDINGS - 100% Online Recorded Lectures Library */}
+          {currentView === 'recordings' && (
+            <>
+              {/* Header Banner */}
+              <div className="relative bg-gradient-to-r from-purple-700 via-indigo-700 to-violet-800 rounded-2xl p-8 mb-8 shadow-xl overflow-hidden text-white">
+                <div className="absolute inset-0 opacity-10 pointer-events-none">
+                  <div className="absolute transform rotate-45 -top-10 -right-10 w-44 h-44 bg-white rounded-full"></div>
+                  <div className="absolute transform -rotate-45 -bottom-10 -left-10 w-36 h-36 bg-white rounded-full"></div>
+                </div>
+
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white/20 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 shadow-inner">
+                      <PlayCircle className="w-8 h-8 text-white" />
+                    </div>
+                    <div>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/20 text-white border border-white/30">
+                        Master Cloud Archive
+                      </span>
+                      <h2 className="text-3xl font-extrabold tracking-tight mt-1">Recorded Lectures</h2>
+                      <p className="text-purple-100 text-sm mt-1">
+                        Watch recorded sessions anytime with secure high-speed cloud streaming
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative w-full md:w-72">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search recordings..."
+                      value={recordingSearchQuery}
+                      onChange={(e) => setRecordingSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 focus:bg-white focus:text-gray-900 text-white placeholder-purple-200 focus:placeholder-gray-400 border border-white/20 focus:outline-none transition-all text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-purple-100 font-medium">Total Recordings</p>
+                    <p className="text-2xl font-bold mt-1 text-white">{recordings.length}</p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-purple-100 font-medium">Available for Stream</p>
+                    <p className="text-2xl font-bold mt-1 text-emerald-300">
+                      {recordings.filter(r => r.status === 'READY').length}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
+                    <p className="text-xs text-purple-100 font-medium">Processing</p>
+                    <p className="text-2xl font-bold mt-1 text-amber-300">
+                      {recordings.filter(r => r.status === 'PROCESSING' || r.status === 'RECORDING').length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recordings Grid */}
+              {recordings.filter(r => {
+                if (!recordingSearchQuery) return true;
+                const q = recordingSearchQuery.toLowerCase();
+                return (
+                  r.live_class?.title?.toLowerCase().includes(q) ||
+                  r.live_class?.tutor?.full_name?.toLowerCase().includes(q)
+                );
+              }).length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                  {recordings
+                    .filter(r => {
+                      if (!recordingSearchQuery) return true;
+                      const q = recordingSearchQuery.toLowerCase();
+                      return (
+                        r.live_class?.title?.toLowerCase().includes(q) ||
+                        r.live_class?.tutor?.full_name?.toLowerCase().includes(q)
+                      );
+                    })
+                    .map(rec => (
+                      <div
+                        key={rec.id}
+                        className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
+                      >
+                        {/* Video Thumbnail Mock / Header */}
+                        <div className="relative bg-gradient-to-br from-slate-900 to-indigo-950 p-6 flex flex-col items-center justify-center min-h-[160px] text-white">
+                          <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center group-hover:scale-110 group-hover:bg-white/20 transition-all border border-white/20 shadow-lg cursor-pointer" onClick={() => handleWatchRecording(rec)}>
+                            <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+                          </div>
+
+                          {/* Duration Badge */}
+                          <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-xs font-mono text-white flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-purple-300" />
+                            {formatDuration(rec.duration_seconds)}
+                          </div>
+
+                          {/* Ready Badge */}
+                          <div className="absolute top-3 left-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                              rec.status === 'READY' ? 'bg-emerald-500/80 text-white' : 'bg-amber-500/80 text-white'
+                            }`}>
+                              {rec.status}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 flex-1 flex flex-col justify-between">
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-lg mb-2 line-clamp-2">
+                              {rec.live_class?.title || 'Recorded Live Session'}
+                            </h3>
+
+                            <div className="space-y-2 my-4 text-xs text-gray-500">
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-indigo-500" />
+                                <span>Tutor: <strong className="text-gray-800">{rec.live_class?.tutor?.full_name || 'Instructor'}</strong></span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-blue-500" />
+                                <span>Date: <strong className="text-gray-800">{new Date(rec.created_at).toLocaleDateString()}</strong></span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <HardDrive className="w-4 h-4 text-purple-500" />
+                                <span>Size: <strong className="text-gray-800">{formatFileSize(rec.file_size_bytes)}</strong></span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleWatchRecording(rec)}
+                            disabled={rec.status !== 'READY'}
+                            className={`w-full mt-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                              rec.status === 'READY'
+                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md shadow-purple-500/20 active:scale-95'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            <Play className="w-4 h-4 fill-current" />
+                            <span>{rec.status === 'READY' ? 'Watch Lecture' : 'Processing Video...'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-16 px-4 bg-white rounded-2xl border border-gray-200 shadow-sm mb-12">
+                  <div className="w-20 h-20 rounded-full bg-purple-50 text-purple-500 flex items-center justify-center mx-auto mb-4">
+                    <FileVideo className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">No Recorded Lectures Available</h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    Live class recordings will be processed and automatically archived here after each session concludes.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 🎬 Video Playback Modal */}
+          {selectedRecording && (
+            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="relative w-full max-w-4xl bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 px-6 bg-slate-900/80 border-b border-white/10 text-white">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
+                      <PlayCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-base truncate max-w-md">
+                        {selectedRecording.live_class?.title || 'Recorded Lecture'}
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        Tutor: {selectedRecording.live_class?.tutor?.full_name || 'Instructor'} • Duration: {formatDuration(selectedRecording.duration_seconds)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>DRM Protected</span>
+                    </span>
+                    <button
+                      onClick={handleClosePlayer}
+                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Player Area with Anti-Capture & Dynamic Watermark */}
+                <div className="relative aspect-video w-full bg-black flex items-center justify-center select-none overflow-hidden">
+                  <SecureMediaProtection
+                    isActive={!!selectedRecording && !!streamUrl}
+                    studentInfo={{
+                      name: studentDetails?.name,
+                      studentId: tokenData?.student_id,
+                      email: studentDetails?.email,
+                      phone: studentDetails?.phone,
+                    }}
+                    enableMovingWatermark={true}
+                    enableBlurShield={true}
+                  >
+                    {loadingStream ? (
+                      <div className="flex flex-col items-center justify-center gap-3 text-white h-full">
+                        <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-sm font-medium text-purple-300">Retrieving secure cloud stream...</p>
+                      </div>
+                    ) : streamUrl ? (
+                      <video
+                        src={streamUrl}
+                        controls
+                        autoPlay
+                        playsInline
+                        controlsList="nodownload noremoteplayback"
+                        disablePictureInPicture
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          return false;
+                        }}
+                        onDragStart={(e) => {
+                          e.preventDefault();
+                          return false;
+                        }}
+                        onLoadedMetadata={(e) => {
+                          const vid = e.currentTarget;
+                          if (!isFinite(vid.duration) || isNaN(vid.duration) || vid.duration <= 0) {
+                            vid.currentTime = 1e101;
+                            vid.ontimeupdate = function() {
+                              this.ontimeupdate = null;
+                              vid.currentTime = 0;
+                            };
+                          }
+                        }}
+                        onError={(e) => {
+                          console.error("Recording video stream playback error:", e);
+                          toast.error("Video stream playback error. Please check your connection.");
+                        }}
+                        className="w-full h-full object-contain select-none"
+                      />
+                    ) : (
+                      <div className="text-red-400 text-sm">Failed to load video stream URL.</div>
+                    )}
+                  </SecureMediaProtection>
+                </div>
+
+                {/* Footer */}
+                <div className="p-3 px-6 bg-slate-900/60 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Protected stream • Recording & Downloads Prohibited</span>
+                  </span>
+                  <button
+                    onClick={handleClosePlayer}
+                    className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium transition-all cursor-pointer"
+                  >
+                    Close Player
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* 🔹 VIEW: PAYMENT - Payment Page */}

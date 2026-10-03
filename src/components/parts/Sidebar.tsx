@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentDetails } from '../../services/api';
 import { StudentDetails } from '../../types/auth';
-import { Home, BookOpen, LogOut, Calendar, User, CreditCard } from 'lucide-react';
+import { Home, BookOpen, LogOut, Calendar, User, CreditCard, Radio, PlayCircle } from 'lucide-react';
 import logoImage from '../../assets/images/logo.png';
 
 interface SidebarProps {
@@ -95,6 +95,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView = 'dashboard', onViewChan
       if (onViewChange) {
         setTimeout(() => onViewChange('payment'), 100);
       }
+    } else if (view === 'live-classes') {
+      navigate('/dashboard', { state: { view: 'live-classes' } });
+      if (onViewChange) {
+        setTimeout(() => onViewChange('live-classes'), 100);
+      }
+    } else if (view === 'recordings') {
+      navigate('/dashboard', { state: { view: 'recordings' } });
+      if (onViewChange) {
+        setTimeout(() => onViewChange('recordings'), 100);
+      }
     } else {
       // For other views, use callback if available
       if (onViewChange) onViewChange(view);
@@ -160,6 +170,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView = 'dashboard', onViewChan
                 view: "enrollment",
                 icon: BookOpen,
                 description: "Enrolled batches",
+              },
+              {
+                label: "Live Classes",
+                view: "live-classes",
+                icon: Radio,
+                description: "Live & upcoming sessions",
+              },
+              {
+                label: "Recorded Lectures",
+                view: "recordings",
+                icon: PlayCircle,
+                description: "Past class recordings",
               },
               {
                 label: "Payment",

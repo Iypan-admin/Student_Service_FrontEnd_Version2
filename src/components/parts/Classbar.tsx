@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentDetails } from '../../services/api';
 import { StudentDetails } from '../../types/auth';
-import { Menu, X, LogOut, Calendar, BookOpen, MessageCircle, BarChart3, GraduationCap, User, TrendingUp } from 'lucide-react';
+import { Menu, X, LogOut, Calendar, BookOpen, MessageCircle, BarChart3, GraduationCap, User, TrendingUp, Radio, PlayCircle } from 'lucide-react';
 
 const Classbar = () => {
   const { batchId } = useParams();
@@ -82,6 +82,18 @@ const Classbar = () => {
                 href: `/class/${batchId}`, 
                 icon: Calendar,
                 description: 'View schedule'
+              },
+              { 
+                label: 'Live Classroom', 
+                href: `/class/${batchId}/live`, 
+                icon: Radio,
+                description: 'Join live class'
+              },
+              { 
+                label: 'Recorded Lectures', 
+                href: `/class/${batchId}/recordings`, 
+                icon: PlayCircle,
+                description: 'Watch recorded classes'
               },
               { 
                 label: 'Resources', 

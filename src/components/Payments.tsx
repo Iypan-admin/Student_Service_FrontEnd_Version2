@@ -1357,8 +1357,7 @@ const Payments: React.FC<PaymentsProps> = ({ isEmbedded = false }) => {
                                       // Adjust first or last payment to include difference to ensure total = finalFees
                                       let monthlyAmount = emiAmount;
                                       if (difference !== 0) {
-                                    monthlyAmount = month === 1 ? emiAmount + difference : emiAmount;
-                                        }
+                                        monthlyAmount = month === 1 ? emiAmount + difference : emiAmount;
                                       }
                                       const numPaidMonths = paidMonths.map(Number);
                                       const isPaid = numPaidMonths.includes(Number(month));

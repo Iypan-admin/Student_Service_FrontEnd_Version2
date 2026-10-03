@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { LogOut, Calendar, Video, Play, BookOpen, CheckCircle2, Clock, CheckCircle, XCircle, User, Settings, ChevronLeft, ChevronRight, Info, X, MapPin, Globe } from 'lucide-react';
+import { LogOut, Calendar, Video, Play, BookOpen, CheckCircle2, Clock, CheckCircle, XCircle, User, Settings, ChevronLeft, ChevronRight, Info, X, MapPin, Globe, Radio, PlayCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getClassMeets, getBatchDetails, getStudentDetails } from '../services/api';
+import { getLiveClasses, LiveClass } from '../services/liveClassApi';
 import { ClassMeet, StudentDetails, BatchDetails } from '../types/auth';
 import Classbar from './parts/Classbar';
 import GoogleMeetModal from './GoogleMeetModal';
@@ -27,6 +28,34 @@ const Class = () => {
   const [batchDetails, setBatchDetails] = useState<BatchDetails | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [activeLiveClass, setActiveLiveClass] = useState<LiveClass | null>(null);
+
+  // Poll for Active LIVE class
+  useEffect(() => {
+    if (!batchId) return;
+    const checkLiveStatus = async () => {
+      try {
+        const nowMs = Date.now();
+        const classes = await getLiveClasses({ batch_id: batchId });
+        const live = classes.find((c) => 
+          (c.status === 'LIVE' || (c.status === 'SCHEDULED' && nowMs >= new Date(c.scheduled_start).getTime())) && 
+          nowMs <= new Date(c.scheduled_end).getTime()
+        );
+        setActiveLiveClass(live || null);
+      } catch (err) {
+        // Silent error
+      }
+    };
+
+    checkLiveStatus();
+    const interval = setInterval(checkLiveStatus, 5000);
+    const handleFocus = () => checkLiveStatus();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [batchId]);
 
   // Fetch student details
   useEffect(() => {
@@ -386,6 +415,58 @@ const Class = () => {
 
         {/* Main Content - Table Format */}
         <main className="flex-1 w-full max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 md:px-6 lg:px-8">
+          {/* Prominent Live Class Active Banner */}
+          {activeLiveClass && (
+            <div className="mb-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-red-400/30">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center flex-shrink-0 animate-bounce">
+                  <Radio className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-white text-red-600 tracking-wider flex items-center gap-1 shadow-sm">
+                      <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                      LIVE NOW
+                    </span>
+                    <span className="text-xs text-white/90 font-medium">100% In-Portal Live Classroom</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white tracking-wide">
+                    {activeLiveClass.title}
+                  </h3>
+                  <p className="text-xs text-white/80">
+                    Tutor: {activeLiveClass.tutor?.full_name || 'Academic Faculty'} • HD Video, Audio, Whiteboard & Live Chat
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => navigate(`/class/${batchId}/live`)}
+                className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-red-50 text-red-600 font-bold text-sm rounded-xl shadow-lg transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              >
+                <span>🔴 Join Live Class Now</span>
+                <span className="text-lg">→</span>
+              </button>
+            </div>
+          )}
+
+          {/* Quick Shortcuts Bar (Live & Recordings) */}
+          <div className="mb-6 flex flex-wrap gap-3">
+            <button
+              onClick={() => navigate(`/class/${batchId}/live`)}
+              className="px-4 py-2.5 bg-white border border-gray-200 hover:border-red-400 hover:bg-red-50/40 rounded-xl text-xs font-semibold text-gray-700 hover:text-red-600 flex items-center gap-2 shadow-sm transition-all"
+            >
+              <Radio className="w-4 h-4 text-red-500" />
+              <span>Live Classroom Studio</span>
+            </button>
+            <button
+              onClick={() => navigate(`/class/${batchId}/recordings`)}
+              className="px-4 py-2.5 bg-white border border-gray-200 hover:border-blue-400 hover:bg-blue-50/40 rounded-xl text-xs font-semibold text-gray-700 hover:text-blue-600 flex items-center gap-2 shadow-sm transition-all"
+            >
+              <PlayCircle className="w-4 h-4 text-blue-600" />
+              <span>Watch Recorded Lectures</span>
+            </button>
+          </div>
+
           {/* Stat Cards - Total, Completed, Pending Sessions - BERRY Style */}
           <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Total Sessions Card */}

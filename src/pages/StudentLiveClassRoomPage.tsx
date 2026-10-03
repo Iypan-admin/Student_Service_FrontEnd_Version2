@@ -60,6 +60,33 @@ const formatISTTime = (isoString?: string) => {
   }
 };
 
+// Helper to accurately resolve participant role from LiveKit metadata, identity, or names
+const getParticipantRole = (p: any): string => {
+  if (!p) return 'Student';
+  try {
+    if (p.metadata) {
+      const meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+      if (meta.roleLabel) return meta.roleLabel;
+      if (meta.role === 'academic' || meta.isAcademic) return 'Academic Manager';
+      if (meta.role === 'admin' || meta.isAdmin) return 'Administrator';
+      if (meta.role === 'teacher' || meta.isTeacher) return 'Instructor (Host)';
+      if (meta.role === 'student') return 'Student';
+    }
+  } catch (_) {}
+
+  const id = (p.identity || '').toLowerCase();
+  if (id.startsWith('academic_')) return 'Academic Manager';
+  if (id.startsWith('admin_')) return 'Administrator';
+  if (id.startsWith('tutor_') || id.startsWith('teacher_')) return 'Instructor (Host)';
+
+  const name = (p.name || '').toLowerCase();
+  if (name.includes('academic') || name.includes('manager')) return 'Academic Manager';
+  if (name.includes('admin')) return 'Administrator';
+  if (name.includes('instructor') || name.includes('tutor')) return 'Instructor (Host)';
+
+  return 'Student';
+};
+
 // Inner Classroom Stage Component
 interface ClassroomStageProps {
   liveClass: LiveClass;
@@ -282,20 +309,31 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
   const cameraTracks = useTracks([Track.Source.Camera]);
   const screenShareTracks = useTracks([Track.Source.ScreenShare]);
 
-  // Find remote tutor track (prefer remote participant camera/screen track)
-  const tutorTrack = screenShareTracks[0] || cameraTracks.find((t) => !t.participant.isLocal);
+  // Find remote tutor participant accurately
+  const tutorParticipant = remoteParticipants.find(
+    (p) => getParticipantRole(p) === 'Instructor (Host)' || p.identity.startsWith('tutor_') || p.identity.includes('teacher')
+  ) || remoteParticipants.find((p) => getParticipantRole(p) !== 'Academic Manager') || remoteParticipants[0];
+
+  const otherRemoteParticipants = remoteParticipants.filter(
+    (p) => p.identity !== tutorParticipant?.identity
+  );
+
+  // Find remote tutor track (prefer tutor screen/camera track)
+  const tutorTrack = screenShareTracks.find((t) => t.participant.identity === tutorParticipant?.identity)
+    || cameraTracks.find((t) => t.participant.identity === tutorParticipant?.identity)
+    || screenShareTracks[0]
+    || cameraTracks.find((t) => !t.participant.isLocal);
   const localTrack = cameraTracks.find((t) => t.participant.isLocal);
 
   // Monitor remote tutor speaking
   useEffect(() => {
-    const remoteTutor = remoteParticipants[0];
-    if (!remoteTutor) return;
+    if (!tutorParticipant) return;
     const handleSpeaking = (speaking: boolean) => setIsTutorSpeaking(speaking);
-    remoteTutor.on('isSpeakingChanged', handleSpeaking);
+    tutorParticipant.on('isSpeakingChanged', handleSpeaking);
     return () => {
-      remoteTutor.off('isSpeakingChanged', handleSpeaking);
+      tutorParticipant.off('isSpeakingChanged', handleSpeaking);
     };
-  }, [remoteParticipants]);
+  }, [tutorParticipant]);
 
   const formatElapsed = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -646,24 +684,51 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 </div>
               </div>
 
-              {/* Classmates */}
-              {remoteParticipants.slice(1).map((p) => (
-                <div
-                  key={p.identity}
-                  className="flex items-center justify-between p-2.5 bg-slate-800/40 border border-slate-700/40 rounded-xl"
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3">
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-slate-200">
-                      {(p.name || 'P')[0]?.toUpperCase()}
+              {/* Other Remote Attendees (Academic Managers & Classmates) */}
+              {otherRemoteParticipants.map((p) => {
+                const role = getParticipantRole(p);
+                const isAcademic = role === 'Academic Manager';
+                return (
+                  <div
+                    key={p.identity}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                      isAcademic
+                        ? 'bg-purple-950/40 border-purple-800/60 shadow-sm shadow-purple-950/20'
+                        : 'bg-slate-800/40 border-slate-700/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                      <div
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                          isAcademic
+                            ? 'bg-purple-600 text-white shadow'
+                            : 'bg-slate-700 text-slate-200'
+                        }`}
+                      >
+                        {(p.name || (isAcademic ? 'A' : 'P'))[0]?.toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-medium text-slate-200">{p.name || p.identity}</p>
+                          {isAcademic && (
+                            <span className="px-1.5 py-0.2 bg-purple-950/80 text-purple-300 border border-purple-600/70 text-[9px] font-bold rounded">
+                              Academic Manager
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[10px] ${
+                            isAcademic ? 'text-purple-300 font-semibold' : 'text-slate-400'
+                          }`}
+                        >
+                          {isAcademic ? 'Academic Manager (Observer)' : 'Classmate'}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-200">{p.name || p.identity}</p>
-                      <span className="text-[10px] text-slate-400">Classmate</span>
-                    </div>
+                    <span className="text-xs">{p.isMicrophoneEnabled ? '🎤' : '🔇'}</span>
                   </div>
-                  <span className="text-xs">{p.isMicrophoneEnabled ? '🎤' : '🔇'}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

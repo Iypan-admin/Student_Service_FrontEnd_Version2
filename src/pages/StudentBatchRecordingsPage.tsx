@@ -358,38 +358,39 @@ export const StudentBatchRecordingsPage: React.FC = () => {
 
       {/* Top Navbar */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pl-14 sm:pl-16 lg:pl-8">
+          <div className="flex justify-between items-center py-3 sm:py-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
                 onClick={() => navigate(`/class/${batchId}`)}
-                className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors shrink-0"
                 title="Back to Schedule"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <FileVideo className="w-6 h-6 text-blue-600" />
-                  Recorded Lectures
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl font-bold text-gray-900 flex items-center gap-1.5 sm:gap-2 truncate">
+                  <FileVideo className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+                  <span className="truncate">Recorded Lectures</span>
                 </h1>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 hidden sm:block">
                   Access past live classes & auto-recorded video archives
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 onClick={() => navigate(`/class/${batchId}/live`)}
-                className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-red-500/20 transition-all"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 sm:gap-1.5 shadow-md shadow-red-500/20 transition-all shrink-0"
               >
                 <Radio className="w-3.5 h-3.5 animate-pulse" />
-                <span>Live Classroom</span>
+                <span className="hidden sm:inline">Live Classroom</span>
+                <span className="sm:hidden font-bold">Live</span>
               </button>
               <button
                 onClick={fetchRecordings}
-                className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
                 title="Refresh recordings"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -400,9 +401,9 @@ export const StudentBatchRecordingsPage: React.FC = () => {
       </nav>
 
       {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full flex-1">
         {/* Search & Stats Bar */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-col sm:flex-row gap-4 justify-between items-center">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-stretch sm:items-center">
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -713,8 +714,8 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                       <span className="text-slate-400">{formatTime(effectiveDuration)}</span>
                     </div>
 
-                    {/* Volume Slider */}
-                    <div className="flex items-center gap-1.5 ml-2">
+                    {/* Volume Slider - Desktop only */}
+                    <div className="hidden sm:flex items-center gap-1.5 ml-2">
                       <button onClick={toggleMute} className="p-1 hover:text-blue-400 transition-colors">
                         {isMuted || volume === 0 ? (
                           <VolumeX className="w-4 h-4 text-red-400" />
@@ -735,9 +736,21 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                   </div>
 
                   {/* Right Controls: Speed & Fullscreen */}
-                  <div className="flex items-center gap-2">
-                    {/* Speed Selector */}
-                    <div className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700">
+                  <div className="flex items-center gap-1 sm:gap-2">
+                    {/* Mobile Speed Select */}
+                    <select
+                      value={playbackSpeed}
+                      onChange={(e) => changePlaybackSpeed(parseFloat(e.target.value))}
+                      aria-label="Playback Speed"
+                      className="sm:hidden bg-slate-800 text-[11px] font-semibold text-slate-200 border border-slate-700 rounded-lg px-1.5 py-1 focus:outline-none"
+                    >
+                      {[0.75, 1, 1.25, 1.5, 2].map((s) => (
+                        <option key={s} value={s}>{s}x</option>
+                      ))}
+                    </select>
+
+                    {/* Desktop Speed Selector */}
+                    <div className="hidden sm:flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700">
                       {[0.75, 1, 1.25, 1.5, 2].map((s) => (
                         <button
                           key={s}

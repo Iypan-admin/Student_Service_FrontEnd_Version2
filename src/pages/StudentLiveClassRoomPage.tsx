@@ -1100,34 +1100,36 @@ export const StudentLiveClassRoomPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Top Bar */}
-      <div className="h-16 px-6 bg-slate-900/60 backdrop-blur-md border-b border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="h-14 sm:h-16 px-3 sm:px-6 bg-slate-900/60 backdrop-blur-md border-b border-slate-800 flex items-center justify-between">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => navigate(`/class/${batchId}`)}
-            className="p-2 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg transition-colors flex items-center gap-1.5 text-sm"
+            className="p-1.5 sm:p-2 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg transition-colors flex items-center gap-1.5 text-xs sm:text-sm shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Class Dashboard</span>
+            <span className="hidden sm:inline">Class Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </button>
-          <div className="h-5 w-px bg-slate-800" />
-          <div className="flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-blue-400" />
-            <span className="font-semibold text-sm">Live Class Portal</span>
+          <div className="h-4 sm:h-5 w-px bg-slate-800 shrink-0" />
+          <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+            <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 shrink-0" />
+            <span className="font-semibold text-xs sm:text-sm truncate">Live Class Portal</span>
           </div>
         </div>
 
         <button
           onClick={fetchBatchClasses}
-          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-lg flex items-center gap-1.5 border border-slate-700 transition-colors"
+          className="px-2.5 sm:px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-lg flex items-center gap-1.5 border border-slate-700 transition-colors shrink-0"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Status</span>
+          <span className="hidden sm:inline">Refresh Status</span>
+          <span className="sm:hidden">Refresh</span>
         </button>
       </div>
 
       {/* Main Empty / Upcoming State View */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-xl w-full bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 shadow-2xl text-center">
+      <div className="flex-1 flex items-center justify-center p-3 sm:p-6">
+        <div className="max-w-xl w-full bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl text-center">
           <div className="w-20 h-20 rounded-3xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-6 shadow-inner">
             <Radio className="w-10 h-10 animate-pulse text-blue-400" />
           </div>

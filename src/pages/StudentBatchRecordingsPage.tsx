@@ -90,6 +90,24 @@ export const StudentBatchRecordingsPage: React.FC = () => {
 
   // Open Video Player Modal & Fetch Secure Signed URL
   const handleWatchRecording = async (rec: LiveClassRecording) => {
+    const hasVideo = Boolean(rec.storage_object_path || rec.raw_egress_url || (rec.file_size_bytes && rec.file_size_bytes > 0));
+
+    if (rec.status === 'RECORDING') {
+      toast('This live class is currently in progress. The recorded video will be available once the session ends.', {
+        icon: '🔴',
+        duration: 4000
+      });
+      return;
+    }
+
+    if (!hasVideo) {
+      toast('Lecture video recording is not available in storage yet or is processing.', {
+        icon: '⏳',
+        duration: 4000
+      });
+      return;
+    }
+
     setSelectedRecording(rec);
     setLoadingStream(true);
     setStreamUrl(null);
@@ -107,7 +125,7 @@ export const StudentBatchRecordingsPage: React.FC = () => {
       setStreamUrl(data.streamUrl);
     } catch (err: any) {
       console.error('Failed to get signed playback URL', err);
-      toast.error('Could not load secure video stream');
+      toast.error(err.message || 'Could not load secure video stream');
     } finally {
       setLoadingStream(false);
     }
@@ -464,14 +482,21 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                   {/* Duration Tag */}
                   <div className="absolute bottom-3 right-3 px-2 py-0.5 bg-black/75 backdrop-blur-sm rounded-md text-[11px] font-semibold text-white flex items-center gap-1">
                     <Clock className="w-3 h-3 text-blue-400" />
-                    <span>{formatTime(rec.duration_seconds)}</span>
+                    <span>{rec.duration_seconds && rec.duration_seconds > 0 ? formatTime(rec.duration_seconds) : 'Video'}</span>
                   </div>
 
                   {/* Status Badge */}
-                  <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center gap-1 backdrop-blur-sm">
-                    <CheckCircle className="w-2.5 h-2.5" />
-                    <span>READY FOR PLAYBACK</span>
-                  </div>
+                  {rec.status === 'RECORDING' ? (
+                    <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 border border-amber-500/30 text-amber-300 flex items-center gap-1 backdrop-blur-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      <span>RECORDING IN PROGRESS</span>
+                    </div>
+                  ) : (
+                    <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center gap-1 backdrop-blur-sm">
+                      <CheckCircle className="w-2.5 h-2.5" />
+                      <span>READY FOR PLAYBACK</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Details */}

@@ -198,7 +198,10 @@ export const getRecordingStreamUrl = async (id: string): Promise<StreamUrlRespon
     method: 'GET',
     headers: getHeaders()
   });
-  if (!response.ok) throw new Error('Failed to fetch recording playback stream');
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to fetch recording playback stream');
+  }
   return response.json();
 };
 

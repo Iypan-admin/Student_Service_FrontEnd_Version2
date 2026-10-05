@@ -63,13 +63,28 @@ export interface StreamUrlResponse {
   fileName: string;
 }
 
-const LIVE_CLASSES_URL =
-  (import.meta.env.VITE_LIVE_CLASSES_API_URL as string) ||
-  'http://localhost:3005/api/live-classes';
+// Dynamic endpoint resolution to prevent external devices from failing on localhost
+const isLocal = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const RECORDINGS_URL =
-  (import.meta.env.VITE_RECORDINGS_API_URL as string) ||
-  'http://localhost:3005/api/recordings';
+const defaultAcademicBase = isLocal ? 'http://localhost:3005/api' : 'https://academicservice.iypan.com/api';
+
+const resolveApiUrl = (envUrl: string | undefined, endpoint: string) => {
+  if (envUrl && (!envUrl.includes('localhost') || isLocal)) {
+    return envUrl;
+  }
+  return `${defaultAcademicBase}/${endpoint}`;
+};
+
+const LIVE_CLASSES_URL = resolveApiUrl(
+  import.meta.env.VITE_LIVE_CLASSES_API_URL as string | undefined,
+  'live-classes'
+);
+
+const RECORDINGS_URL = resolveApiUrl(
+  import.meta.env.VITE_RECORDINGS_API_URL as string | undefined,
+  'recordings'
+);
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');

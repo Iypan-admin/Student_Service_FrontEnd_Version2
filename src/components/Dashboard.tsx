@@ -54,7 +54,8 @@ const formatISTDate = (isoString?: string) => {
       timeZone: 'Asia/Kolkata',
       weekday: 'short',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      year: 'numeric'
     });
   } catch (_) {
     return '';
@@ -1128,7 +1129,7 @@ const Dashboard = () => {
                       const startMs = new Date(c.scheduled_start).getTime();
                       const endMs = new Date(c.scheduled_end).getTime();
                       const isLive = c.status === 'LIVE';
-                      const isPast = !isLive && (c.status === 'COMPLETED' || currentTimeMs > endMs + 60 * 60 * 1000);
+                      const isPast = !isLive && currentTimeMs > endMs;
                       const inSlot = isLive || (currentTimeMs >= startMs - 15 * 60 * 1000 && !isPast);
                       if (liveClassFilter === 'all') return true;
                       if (liveClassFilter === 'LIVE') return isLive || inSlot;
@@ -1140,9 +1141,9 @@ const Dashboard = () => {
                       const startMs = new Date(item.scheduled_start).getTime();
                       const endMs = new Date(item.scheduled_end).getTime();
                       const isLive = item.status === 'LIVE';
-                      const isInSlot = currentTimeMs >= startMs - 15 * 60 * 1000 && currentTimeMs <= endMs + 60 * 60 * 1000;
-                      const isExpired = !isLive && (item.status === 'COMPLETED' || currentTimeMs > endMs + 60 * 60 * 1000);
-                      const canJoin = isLive || (item.status === 'SCHEDULED' && isInSlot);
+                      const isInSlot = currentTimeMs >= startMs - 15 * 60 * 1000 && currentTimeMs <= endMs;
+                      const isExpired = !isLive && currentTimeMs > endMs;
+                      const canJoin = (isLive || isInSlot) && !isExpired;
                       const isCompleted = item.status === 'COMPLETED' && !isLive;
 
                       return (
@@ -1164,7 +1165,7 @@ const Dashboard = () => {
                                 : 'bg-blue-600 text-white'
                             }`}>
                               {canJoin && <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>}
-                              {canJoin ? (item.status === 'LIVE' ? 'LIVE NOW' : 'IN SESSION') : isExpired && item.status !== 'COMPLETED' ? 'SCHEDULE ENDED' : item.status}
+                              {canJoin ? (item.status === 'LIVE' ? 'LIVE NOW' : item.status === 'COMPLETED' ? 'RE-JOINABLE' : 'IN SESSION') : isExpired ? 'SCHEDULE ENDED' : item.status}
                             </span>
                             <span className="text-xs font-semibold text-gray-600 truncate max-w-[150px]">
                               {item.batch?.batch_name || 'Enrolled Batch'}
@@ -1501,13 +1502,8 @@ const Dashboard = () => {
                         }}
                         onLoadedMetadata={(e) => {
                           const vid = e.currentTarget;
-                          if (!isFinite(vid.duration) || isNaN(vid.duration) || vid.duration <= 0) {
-                            vid.currentTime = 1e101;
-                            vid.ontimeupdate = function() {
-                              this.ontimeupdate = null;
-                              vid.currentTime = 0;
-                            };
-                          }
+                          vid.volume = 1.0;
+                          vid.muted = false;
                         }}
                         onError={(e) => {
                           console.error("Recording video stream playback error:", e);

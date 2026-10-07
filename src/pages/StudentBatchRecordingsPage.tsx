@@ -170,28 +170,10 @@ export const StudentBatchRecordingsPage: React.FC = () => {
     const vid = videoRef.current;
     if (!vid) return;
     const vidDur = vid.duration;
-    // In Chrome, WebM recordings from MediaRecorder often have duration === Infinity
-    if (!isFinite(vidDur) || isNaN(vidDur) || vidDur <= 0) {
-      // Fix WebM infinite duration in Chrome: seek to end briefly so browser determines real duration
-      vid.currentTime = 1e101;
-      vid.ontimeupdate = function () {
-        this.ontimeupdate = handleTimeUpdate;
-        if (videoRef.current) {
-          videoRef.current.currentTime = 0;
-          if (isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
-            setDuration(videoRef.current.duration);
-            return;
-          }
-        }
-        if (selectedRecording?.duration_seconds) {
-          setDuration(Number(selectedRecording.duration_seconds));
-        }
-      };
-      if (selectedRecording?.duration_seconds) {
-        setDuration(Number(selectedRecording.duration_seconds));
-      }
-    } else {
+    if (isFinite(vidDur) && !isNaN(vidDur) && vidDur > 0) {
       setDuration(vidDur);
+    } else if (selectedRecording?.duration_seconds) {
+      setDuration(Number(selectedRecording.duration_seconds));
     }
   };
 
@@ -485,25 +467,32 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                     <span>{rec.duration_seconds && rec.duration_seconds > 0 ? formatTime(rec.duration_seconds) : 'Video'}</span>
                   </div>
 
-                  {/* Status Badge */}
-                  {rec.status === 'RECORDING' ? (
-                    <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 border border-amber-500/30 text-amber-300 flex items-center gap-1 backdrop-blur-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                      <span>RECORDING IN PROGRESS</span>
-                    </div>
-                  ) : (
-                    <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center gap-1 backdrop-blur-sm">
-                      <CheckCircle className="w-2.5 h-2.5" />
-                      <span>READY FOR PLAYBACK</span>
-                    </div>
-                  )}
+                  {/* Status Badge & Part Badge */}
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10">
+                    {rec.part_number && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-600 text-white shadow-sm">
+                        Part {rec.part_number}
+                      </span>
+                    )}
+                    {rec.status === 'RECORDING' ? (
+                      <div className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 border border-amber-500/30 text-amber-300 flex items-center gap-1 backdrop-blur-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        <span>RECORDING IN PROGRESS</span>
+                      </div>
+                    ) : (
+                      <div className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center gap-1 backdrop-blur-sm">
+                        <CheckCircle className="w-2.5 h-2.5" />
+                        <span>READY FOR PLAYBACK</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Card Details */}
                 <div className="p-5 flex-1 flex flex-col justify-between">
                   <div>
                     <h3 className="font-bold text-gray-900 text-base mb-2 group-hover:text-blue-600 transition-colors line-clamp-2">
-                      {rec.live_class?.title || 'Interactive Live Class Session'}
+                      {rec.display_title || rec.live_class?.title || 'Interactive Live Class Session'}
                     </h3>
 
                     <div className="space-y-1.5 text-xs text-gray-500 mb-3">
@@ -573,9 +562,16 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                 }`}
             >
               <div>
-                <h3 className="text-sm font-bold text-white tracking-wide truncate max-w-lg">
-                  {selectedRecording.live_class?.title || 'Recorded Lecture'}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-bold text-white tracking-wide truncate max-w-lg">
+                    {selectedRecording.display_title || selectedRecording.live_class?.title || 'Recorded Lecture'}
+                  </h3>
+                  {selectedRecording.part_number && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-600 text-white shadow-sm shrink-0">
+                      Part {selectedRecording.part_number}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400">
                   Tutor: {selectedRecording.live_class?.tutor?.full_name || 'Academic Faculty'}
                 </p>

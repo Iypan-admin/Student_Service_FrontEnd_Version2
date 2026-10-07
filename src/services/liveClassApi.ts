@@ -65,12 +65,20 @@ export interface StreamUrlResponse {
 
 // Dynamic endpoint resolution to prevent external devices from failing on localhost
 const isLocal = typeof window !== 'undefined' && 
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  (window.location.hostname === 'localhost' || 
+   window.location.hostname === '127.0.0.1' ||
+   window.location.hostname.startsWith('192.168.') ||
+   window.location.hostname.startsWith('10.') ||
+   window.location.hostname.endsWith('.local'));
 
-const defaultAcademicBase = isLocal ? 'http://localhost:3005/api' : 'https://academicservice.iypan.com/api';
+const localHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const defaultAcademicBase = isLocal ? `http://${localHost}:3005/api` : 'https://academicservice.iypan.com/api';
 
 const resolveApiUrl = (envUrl: string | undefined, endpoint: string) => {
-  if (envUrl && (!envUrl.includes('localhost') || isLocal)) {
+  if (isLocal) {
+    return `${defaultAcademicBase}/${endpoint}`;
+  }
+  if (envUrl) {
     return envUrl;
   }
   return `${defaultAcademicBase}/${endpoint}`;

@@ -33,7 +33,14 @@ import {
   XCircle,
   CheckCircle,
   Volume2,
-  Lock
+  Lock,
+  FileText,
+  ZoomIn,
+  ZoomOut,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  ImageIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -87,6 +94,56 @@ const getParticipantRole = (p: any): string => {
   return 'Student';
 };
 
+// Resilient Video renderer that attaches WebRTC track directly to HTMLMediaElement for rock-solid mobile & desktop support
+interface CameraStreamVideoProps {
+  trackRef?: any;
+  participant?: any;
+  isLocal?: boolean;
+  className?: string;
+}
+
+const CameraStreamVideo: React.FC<CameraStreamVideoProps> = ({
+  trackRef,
+  participant,
+  isLocal = false,
+  className = "w-full h-full object-cover"
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const mediaTrack =
+      trackRef?.publication?.track ||
+      trackRef?.track ||
+      participant?.getTrackPublication(Track.Source.Camera)?.track;
+
+    if (mediaTrack) {
+      mediaTrack.attach(el);
+      if (el.paused) {
+        el.play().catch(() => {});
+      }
+      return () => {
+        try {
+          mediaTrack.detach(el);
+        } catch (_) {}
+      };
+    } else {
+      el.srcObject = null;
+    }
+  }, [trackRef, participant]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted={isLocal}
+      className={className}
+    />
+  );
+};
+
 // Inner Classroom Stage Component
 interface ClassroomStageProps {
   liveClass: LiveClass;
@@ -103,6 +160,16 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
   const [tutorActiveTab, setTutorActiveTab] = useState<'stage' | 'whiteboard'>('stage');
   const [remoteWhiteboardUrl, setRemoteWhiteboardUrl] = useState<string | null>(null);
   const [remoteBoardTheme, setRemoteBoardTheme] = useState<'dark' | 'light'>('dark');
+  const [presentedDocInfo, setPresentedDocInfo] = useState<{
+    name: string;
+    type: string;
+    page: number;
+    totalPages: number;
+  } | null>(null);
+
+  const [studentZoom, setStudentZoom] = useState<number>(1.0);
+  const [studentFitMode, setStudentFitMode] = useState<'page' | 'width'>('page');
+  const [showStudentPip, setShowStudentPip] = useState<boolean>(true);
 
   const [showAttendees, setShowAttendees] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
@@ -208,6 +275,9 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
           if (data.boardTheme) {
             setRemoteBoardTheme(data.boardTheme);
           }
+          if (data.docInfo !== undefined) {
+            setPresentedDocInfo(data.docInfo || null);
+          }
           if (data.activeTab) {
             setTutorActiveTab(data.activeTab);
             // Auto switch student view to whiteboard when tutor switches to whiteboard
@@ -243,6 +313,12 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             setIsHandRaised(false);
             toast('Your hand was acknowledged by the instructor ✋');
           }
+        } else if (data.type === 'TIMER_RESET') {
+          const resetMs = data.startMs || Date.now();
+          if (liveClass?.id) {
+            sessionStorage.setItem(`isml_student_start_${liveClass.id}`, resetMs.toString());
+          }
+          setElapsedSeconds(0);
         }
       } catch (err) {
         console.error('Error parsing room data message', err);
@@ -254,6 +330,18 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       room.off('dataReceived', handleDataReceived);
     };
   }, [room, localParticipant.identity]);
+
+  // Request latest whiteboard & document presentation state on connect
+  useEffect(() => {
+    if (!room || room.state !== 'connected' || !localParticipant) return;
+    const timer = setTimeout(() => {
+      try {
+        const payload = JSON.stringify({ type: 'REQUEST_SYNC' });
+        room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => {});
+      } catch (_) {}
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [room, localParticipant]);
 
 
 
@@ -309,9 +397,9 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     }
   };
 
-  // Tracks query
-  const cameraTracks = useTracks([Track.Source.Camera]);
-  const screenShareTracks = useTracks([Track.Source.ScreenShare]);
+  // Tracks query (include local tracks with onlySubscribed: false)
+  const cameraTracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
+  const screenShareTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false });
 
   // Find remote tutor participant accurately
   const tutorParticipant = remoteParticipants.find(
@@ -322,12 +410,49 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     (p) => p.identity !== tutorParticipant?.identity
   );
 
+  const tutorCamPub = tutorParticipant?.getTrackPublication(Track.Source.Camera);
+  const tutorScreenPub = tutorParticipant?.getTrackPublication(Track.Source.ScreenShare);
+
   // Find remote tutor track (prefer tutor screen/camera track)
-  const tutorTrack = screenShareTracks.find((t) => t.participant.identity === tutorParticipant?.identity)
-    || cameraTracks.find((t) => t.participant.identity === tutorParticipant?.identity)
+  const tutorTrack = screenShareTracks.find((t) => t.participant.identity === tutorParticipant?.identity && !t.publication?.isMuted)
+    || cameraTracks.find((t) => t.participant.identity === tutorParticipant?.identity && !t.publication?.isMuted)
+    || (tutorScreenPub?.track ? { participant: tutorParticipant, publication: tutorScreenPub, source: Track.Source.ScreenShare } : undefined)
+    || (tutorCamPub?.track ? { participant: tutorParticipant, publication: tutorCamPub, source: Track.Source.Camera } : undefined)
     || screenShareTracks[0]
     || cameraTracks.find((t) => !t.participant.isLocal);
-  const localTrack = cameraTracks.find((t) => t.participant.isLocal);
+
+  const isTutorCameraOn = !!(
+    tutorParticipant?.isCameraEnabled ||
+    tutorTrack?.publication?.track ||
+    tutorCamPub?.track ||
+    tutorScreenPub?.track
+  );
+
+  const localCamPub = localParticipant?.getTrackPublication(Track.Source.Camera);
+  const localTrack =
+    cameraTracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera) ||
+    (localCamPub?.track ? { participant: localParticipant, publication: localCamPub, source: Track.Source.Camera } : undefined);
+
+  const handleToggleCamera = async () => {
+    try {
+      const nextState = !isCameraEnabled;
+      if (nextState) {
+        try {
+          await localParticipant.setCameraEnabled(true, {
+            facingMode: 'user',
+            resolution: { width: 1280, height: 720, frameRate: 30 }
+          });
+        } catch (e1) {
+          console.warn("Camera enable with HD constraints failed, trying basic camera:", e1);
+          await localParticipant.setCameraEnabled(true);
+        }
+      } else {
+        await localParticipant.setCameraEnabled(false);
+      }
+    } catch (err) {
+      console.warn("Camera toggle failed:", err);
+    }
+  };
 
   // Monitor remote tutor speaking
   useEffect(() => {
@@ -443,7 +568,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {/* VIEW A: CLASSROOM STAGE (Multi-Participant Interactive Grid) */}
         {activeView === 'stage' && (
           <div className="flex-1 p-2 sm:p-4 flex flex-col justify-center items-center overflow-hidden relative">
-            <div className="w-full h-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4 items-stretch justify-center">
+            <div className={`w-full h-full max-w-6xl grid ${otherRemoteParticipants.length > 0 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'} gap-2 sm:gap-4 items-stretch justify-center overflow-y-auto`}>
               {/* Tile 1: Tutor / Instructor Primary Tile */}
               <div
                 className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${isTutorSpeaking
@@ -451,8 +576,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                     : 'border border-slate-800'
                   }`}
               >
-                {tutorTrack ? (
-                  <VideoTrack trackRef={tutorTrack} className="w-full h-full object-cover" />
+                {isTutorCameraOn ? (
+                  <CameraStreamVideo trackRef={tutorTrack} participant={tutorParticipant} isLocal={false} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-center p-4 sm:p-6 flex flex-col items-center justify-center">
                     <div
@@ -516,8 +641,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                   </div>
                 )}
 
-                {isCameraEnabled && localTrack ? (
-                  <VideoTrack trackRef={localTrack} className="w-full h-full object-cover" />
+                {isCameraEnabled ? (
+                  <CameraStreamVideo trackRef={localTrack} participant={localParticipant} isLocal={true} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-center p-4 sm:p-6 flex flex-col items-center justify-center">
                     <div
@@ -548,16 +673,55 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                   )}
                 </div>
               </div>
+
+              {/* Other Attendees (Classmates / Academic Managers) */}
+              {otherRemoteParticipants.map((p) => {
+                const pTrack = cameraTracks.find((t) => t.participant.identity === p.identity && t.source === Track.Source.Camera);
+                const pCamPub = p.getTrackPublication(Track.Source.Camera);
+                const isCamOn = !!(p.isCameraEnabled || pTrack?.publication?.track || pCamPub?.track);
+                const role = getParticipantRole(p);
+                const isAcademic = role === 'Academic Manager';
+
+                return (
+                  <div
+                    key={p.identity}
+                    className="bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-lg border border-slate-800 min-h-[160px]"
+                  >
+                    {isCamOn ? (
+                      <CameraStreamVideo trackRef={pTrack} participant={p} isLocal={false} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-center p-4 flex flex-col items-center justify-center">
+                        <div
+                          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-2 shadow-lg font-bold text-lg ${
+                            isAcademic
+                              ? 'bg-purple-950/80 border border-purple-500 text-purple-200'
+                              : 'bg-slate-800 border border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {(p.name || (isAcademic ? 'A' : 'P'))[0]?.toUpperCase()}
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-white mb-0.5">{p.name || p.identity}</h4>
+                        <span className="text-[10px] text-slate-400">{isAcademic ? 'Academic Manager' : 'Classmate'}</span>
+                      </div>
+                    )}
+                    <div className="absolute bottom-2 left-2 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-medium flex items-center gap-1.5 border border-white/10 text-white">
+                      <span className={`w-1.5 h-1.5 rounded-full ${p.isMicrophoneEnabled ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+                      <span className="truncate max-w-[100px]">{p.name || p.identity}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* VIEW B: DIGITAL WHITEBOARD STAGE (Synchronized Live from Tutor) */}
+        {/* VIEW B: DIGITAL WHITEBOARD & PRESENTATION (Synchronized Live from Tutor) */}
         {activeView === 'whiteboard' && (
-          <div className="flex-1 p-0 sm:p-2 md:p-4 flex flex-col items-center justify-center overflow-hidden relative">
+          <div className="flex-1 w-full h-full p-0 sm:p-2 md:p-3 flex flex-col items-center justify-center overflow-hidden relative">
             <div
-              className={`w-full h-full max-h-full sm:max-h-[84vh] rounded-none sm:rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl relative border-0 sm:border flex flex-col items-center justify-center transition-all ${remoteBoardTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-[#f8fafc] border-slate-300'
-                }`}
+              className={`w-full h-full flex-1 rounded-none sm:rounded-2xl md:rounded-3xl overflow-auto shadow-2xl relative border-0 sm:border flex flex-col items-center justify-start transition-all ${
+                remoteBoardTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-[#f8fafc] border-slate-300'
+              }`}
             >
               {/* Subtle Grid Pattern */}
               <div
@@ -571,23 +735,100 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 }}
               />
 
-              {/* Whiteboard Top Status Badge */}
-              <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-10 bg-slate-900/90 backdrop-blur-md px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full border border-slate-700/80 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-semibold text-slate-200 shadow-lg">
-                <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <PenTool className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-purple-400" />
-                <span className="hidden sm:inline">Tutor Live Whiteboard • Real-Time Synchronized</span>
-                <span className="sm:hidden">Tutor Board (Live)</span>
+              {/* Floating Top Header Bar: Document Info, Zoom & Fit Controls */}
+              <div className="sticky top-2 z-20 mx-auto my-1.5 flex items-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 text-[11px] sm:text-xs font-semibold text-slate-200 shadow-2xl max-w-[96vw] overflow-x-auto no-scrollbar">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+
+                {presentedDocInfo ? (
+                  <div className="flex items-center gap-1 sm:gap-1.5 truncate max-w-[120px] xs:max-w-[170px] sm:max-w-[260px]">
+                    {presentedDocInfo.type === 'image' ? (
+                      <ImageIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    )}
+                    <span className="text-blue-300 font-bold truncate">
+                      {presentedDocInfo.name}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <PenTool className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span className="hidden sm:inline">Tutor Whiteboard • Live Sync</span>
+                    <span className="sm:hidden font-mono">Whiteboard</span>
+                  </div>
+                )}
+
+                {presentedDocInfo && presentedDocInfo.totalPages > 1 && (
+                  <span className="bg-blue-600/30 text-blue-300 border border-blue-500/40 px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-mono font-bold shrink-0">
+                    {presentedDocInfo.page} / {presentedDocInfo.totalPages}
+                  </span>
+                )}
+
+                <div className="h-3.5 w-px bg-slate-700/80 mx-0.5 shrink-0" />
+
+                {/* Fit Mode Toggle */}
+                <button
+                  onClick={() => setStudentFitMode((m) => (m === 'page' ? 'width' : 'page'))}
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer shrink-0 ${
+                    studentFitMode === 'width'
+                      ? 'bg-blue-600 text-white border-blue-400 shadow-sm'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                  }`}
+                  title={studentFitMode === 'width' ? 'Switch to Fit Screen' : 'Switch to Fit Width'}
+                >
+                  {studentFitMode === 'width' ? 'Fit Width' : 'Fit Page'}
+                </button>
+
+                {/* Zoom Controls */}
+                <div className="flex items-center gap-0.5 bg-slate-800/90 px-1 py-0.5 rounded-lg border border-slate-700/80 shrink-0">
+                  <button
+                    onClick={() => setStudentZoom((z) => Math.max(0.6, Math.round((z - 0.2) * 10) / 10))}
+                    className="p-0.5 sm:p-1 hover:bg-slate-700 text-slate-300 hover:text-white rounded cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  </button>
+                  <span className="text-[10px] font-mono px-1 text-slate-300 font-bold">
+                    {Math.round(studentZoom * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setStudentZoom((z) => Math.min(2.5, Math.round((z + 0.2) * 10) / 10))}
+                    className="p-0.5 sm:p-1 hover:bg-slate-700 text-slate-300 hover:text-white rounded cursor-pointer"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  </button>
+                  {studentZoom !== 1.0 && (
+                    <button
+                      onClick={() => setStudentZoom(1.0)}
+                      className="p-0.5 hover:bg-slate-700 text-slate-400 hover:text-white rounded cursor-pointer"
+                      title="Reset Zoom to 100%"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Synchronized Whiteboard Display */}
+              {/* Synchronized Display Area (Centered, scrollable, zoomable) */}
               {remoteWhiteboardUrl ? (
-                <img
-                  src={remoteWhiteboardUrl}
-                  alt="Tutor Digital Whiteboard"
-                  className="w-full h-full object-contain relative z-0"
-                />
+                <div className="w-full flex-1 flex items-center justify-center p-1 sm:p-3 overflow-auto my-auto">
+                  <img
+                    src={remoteWhiteboardUrl}
+                    alt="Tutor Digital Whiteboard"
+                    style={{
+                      transform: `scale(${studentZoom})`,
+                      transformOrigin: 'center center',
+                      maxWidth: studentFitMode === 'page' ? '100%' : 'none',
+                      maxHeight: studentFitMode === 'page' ? 'calc(100vh - 130px)' : 'none',
+                      width: studentFitMode === 'width' ? '100%' : 'auto',
+                      height: 'auto'
+                    }}
+                    className="object-contain shadow-2xl rounded-xl transition-transform duration-150 relative z-0"
+                  />
+                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center text-center p-4 sm:p-8 z-10 max-w-sm">
+                <div className="flex flex-col items-center justify-center text-center p-4 sm:p-8 z-10 max-w-sm my-auto">
                   <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center justify-center mb-3 sm:mb-4">
                     <PenTool className="w-6 h-6 sm:w-8 sm:h-8" />
                   </div>
@@ -595,33 +836,53 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                     Whiteboard Ready & Active
                   </h3>
                   <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
-                    Live notes, diagrams, and explanations drawn by the tutor will appear here instantly.
+                    Live notes, diagrams, and files presented by the instructor will appear here in real-time.
                   </p>
                 </div>
               )}
 
-              {/* Floating Tutor PiP in Whiteboard Corner */}
-              <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 w-28 sm:w-48 md:w-56 aspect-video bg-slate-900 rounded-lg sm:rounded-2xl overflow-hidden border sm:border-2 border-slate-700 shadow-2xl z-20 flex items-center justify-center pointer-events-none">
-                {tutorTrack ? (
-                  <VideoTrack trackRef={tutorTrack} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="text-center p-1.5 sm:p-2">
-                    <div
-                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mx-auto mb-1 text-xs sm:text-sm font-bold ${isTutorSpeaking ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-blue-600 text-white'
+              {/* Floating Tutor PiP in Whiteboard Corner with Collapse Toggle */}
+              {showStudentPip ? (
+                <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 xs:w-24 sm:w-44 md:w-52 aspect-video bg-slate-900 rounded-lg sm:rounded-2xl overflow-hidden border sm:border-2 border-slate-700 shadow-2xl z-20 flex items-center justify-center">
+                  {isTutorCameraOn ? (
+                    <CameraStreamVideo trackRef={tutorTrack} participant={tutorParticipant} isLocal={false} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-center p-1">
+                      <div
+                        className={`w-6 h-6 sm:w-9 sm:h-9 rounded-full flex items-center justify-center mx-auto mb-0.5 text-xs font-bold ${
+                          isTutorSpeaking ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-blue-600 text-white'
                         }`}
-                    >
-                      {tutorDisplayName[0]?.toUpperCase() || 'T'}
+                      >
+                        {tutorDisplayName[0]?.toUpperCase() || 'T'}
+                      </div>
+                      <p className="text-[8px] sm:text-[10px] font-bold text-white truncate max-w-[80px] sm:max-w-[120px]">
+                        {tutorDisplayName}
+                      </p>
                     </div>
-                    <p className="text-[9px] sm:text-[11px] font-bold text-white truncate max-w-[100px] sm:max-w-[150px]">
-                      {tutorDisplayName}
-                    </p>
+                  )}
+                  <div className="absolute bottom-0.5 left-1 bg-black/75 px-1 py-0.2 rounded text-[7px] sm:text-[9px] text-white flex items-center gap-1 font-medium pointer-events-none">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isTutorSpeaking ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}`} />
+                    <span className="truncate max-w-[60px] sm:max-w-[100px]">{tutorDisplayName}</span>
                   </div>
-                )}
-                <div className="absolute bottom-0.5 sm:bottom-1.5 left-1 sm:left-2 bg-black/70 px-1.5 py-0.2 sm:py-0.5 rounded text-[8px] sm:text-[10px] text-white flex items-center gap-1 font-medium">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isTutorSpeaking ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}`} />
-                  <span className="truncate max-w-[80px] sm:max-w-[120px]">{tutorDisplayName}</span>
+                  {/* Minimize button */}
+                  <button
+                    onClick={() => setShowStudentPip(false)}
+                    className="absolute top-1 right-1 p-0.5 bg-black/80 hover:bg-black text-slate-300 hover:text-white rounded cursor-pointer shadow-md"
+                    title="Hide video to see full document"
+                  >
+                    <EyeOff className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                  </button>
                 </div>
-              </div>
+              ) : (
+                <button
+                  onClick={() => setShowStudentPip(true)}
+                  className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 px-2 py-1 rounded-lg bg-slate-900/90 hover:bg-slate-900 border border-slate-700 text-slate-300 hover:text-white text-[10px] sm:text-xs font-semibold flex items-center gap-1 shadow-lg cursor-pointer z-20"
+                  title="Show Tutor Video"
+                >
+                  <Eye className="w-3 h-3 text-blue-400" />
+                  <span className="hidden xs:inline">Show Video</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -760,7 +1021,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
 
         {/* Camera Toggle */}
         <button
-          onClick={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
+          onClick={handleToggleCamera}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isCameraEnabled
               ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
               : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
@@ -832,6 +1093,10 @@ export const StudentLiveClassRoomPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const roomOptions = React.useMemo(() => ({
+    videoCaptureDefaults: {
+      resolution: { width: 1280, height: 720, frameRate: 30 },
+      facingMode: 'user'
+    },
     audioCaptureDefaults: {
       autoGainControl: true,
       echoCancellation: true,
@@ -840,6 +1105,8 @@ export const StudentLiveClassRoomPage: React.FC = () => {
       channelCount: 1
     },
     publishDefaults: {
+      videoSimulcastLayers: [],
+      videoCodec: 'vp8',
       audioPreset: {
         maxBitrate: 64000
       },
@@ -872,11 +1139,14 @@ export const StudentLiveClassRoomPage: React.FC = () => {
           stopPolling();
           setWaitingStatus('REJECTED');
           toast.error('Tutor declined admission.');
+        } else if (res.status === 'NOT_REQUESTED') {
+          // If session reset or tutor cleared, re-request knock automatically
+          await requestJoinLiveClass(classId).catch(() => {});
         }
       } catch (err) {
         // silent retry
       }
-    }, 2500);
+    }, 1000);
   };
 
   const checkStatusOnce = async (classId: string) => {
@@ -892,6 +1162,9 @@ export const StudentLiveClassRoomPage: React.FC = () => {
         stopPolling();
         setWaitingStatus('REJECTED');
         toast.error('Tutor declined admission.');
+      } else if (res.status === 'NOT_REQUESTED') {
+        await requestJoinLiveClass(classId);
+        toast.success('🔔 Re-sent knock to tutor!');
       } else {
         toast('Still waiting for tutor approval...');
       }
@@ -1034,16 +1307,37 @@ export const StudentLiveClassRoomPage: React.FC = () => {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 sm:gap-3">
             <button
               onClick={handleLeaveClass}
-              className="flex-1 py-3 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer"
+              className="w-full sm:flex-1 py-3 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer"
             >
-              Leave Waiting Room
+              Leave
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await requestJoinLiveClass(activeLiveClass.id);
+                  if (res.status === 'APPROVED') {
+                    setWaitingStatus('APPROVED');
+                    toast.success('🎉 Tutor admitted you to the live class!');
+                    const response = await joinLiveClass(activeLiveClass.id);
+                    setJoinData(response);
+                  } else {
+                    toast.success('🔔 Knock notification sent to tutor!');
+                  }
+                } catch (e) {
+                  toast.error('Failed to send knock');
+                }
+              }}
+              className="w-full sm:flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-amber-600/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Radio className="w-4 h-4 animate-pulse" />
+              <span>Knock Again 🔔</span>
             </button>
             <button
               onClick={() => checkStatusOnce(activeLiveClass.id)}
-              className="py-3 px-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
               <span>Check Status</span>
@@ -1184,18 +1478,19 @@ export const StudentLiveClassRoomPage: React.FC = () => {
               </p>
               <div className="grid grid-cols-2 gap-2 text-xs text-slate-300 pt-2 border-t border-slate-800/80">
                 <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>
+                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="font-medium text-white">
                     {new Date(upcomingClasses[0].scheduled_start).toLocaleDateString('en-IN', {
                       timeZone: 'Asia/Kolkata',
                       weekday: 'short',
+                      day: 'numeric',
                       month: 'short',
-                      day: 'numeric'
+                      year: 'numeric'
                     })}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <Clock className="w-3.5 h-3.5 text-purple-400" />
                   <span>
                     {formatISTTime(upcomingClasses[0].scheduled_start)}
                   </span>
@@ -1205,6 +1500,51 @@ export const StudentLiveClassRoomPage: React.FC = () => {
           ) : (
             <div className="p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl mb-6 text-xs text-slate-500">
               No upcoming scheduled classes found for this batch. Check back soon or visit recordings.
+            </div>
+          )}
+
+          {/* Full Upcoming Lectures Schedule if multiple are scheduled ahead */}
+          {upcomingClasses.length > 1 && (
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 mb-6 text-left">
+              <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-800/80">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  Upcoming Lectures Timeline ({upcomingClasses.length} Scheduled)
+                </span>
+                <span className="text-[10px] text-blue-400 font-semibold">
+                  Asia/Kolkata (IST)
+                </span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {upcomingClasses.slice(1).map((item) => (
+                  <div key={item.id} className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800/90 flex items-center justify-between text-xs hover:border-slate-700 transition-colors">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 font-bold text-[10px] border border-blue-800/50">
+                          Session #{item.session_number}
+                        </span>
+                        <span className="font-semibold text-white truncate max-w-[160px] sm:max-w-xs">{item.title}</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 mt-0.5 block">
+                        Tutor: {item.tutor?.full_name || 'Assigned Tutor'}
+                      </span>
+                    </div>
+                    <div className="text-right text-[11px] text-slate-300 shrink-0 ml-2">
+                      <span className="font-semibold text-blue-300">
+                        {new Date(item.scheduled_start).toLocaleDateString('en-IN', {
+                          timeZone: 'Asia/Kolkata',
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                      <span className="block text-slate-400 text-[10px]">
+                        {formatISTTime(item.scheduled_start)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

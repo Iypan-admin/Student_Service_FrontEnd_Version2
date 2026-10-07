@@ -32,6 +32,23 @@ interface BatchAttendance {
   sessions: AttendanceSession[];
 }
 
+const formatISTTime = (isoString?: string | null) => {
+  if (!isoString) return '';
+  try {
+    const s = String(isoString);
+    const timePart = s.split('T')[1] || s.split(' ')[1] || '';
+    const withZ = (timePart.endsWith('Z') || timePart.includes('+') || timePart.includes('-')) ? s : `${s.replace(' ', 'T')}Z`;
+    return new Date(withZ).toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }) + ' IST';
+  } catch (_) {
+    return isoString || '';
+  }
+};
+
 const StudentAttendancePage: React.FC = () => {
   const { batchId } = useParams<{ batchId: string }>();
   const navigate = useNavigate();
@@ -130,7 +147,10 @@ const StudentAttendancePage: React.FC = () => {
           late_count: data.data.summary?.late_count || 0,
           excused_count: data.data.summary?.excused_count || 0,
           attendance_percentage: data.data.summary?.attendance_percentage || 0,
-          sessions: data.data.sessions || []
+          sessions: (data.data.sessions || []).filter((s: any) => {
+            const sDate = s.session_date ? s.session_date.split('T')[0] : '';
+            return sDate >= '2026-10-07';
+          })
         };
         console.log('🔍 Transformed data:', transformedData);
         setAttendanceData(transformedData);
@@ -539,70 +559,110 @@ const StudentAttendancePage: React.FC = () => {
                       <p className="text-sm sm:text-base text-gray-500 px-4">Attendance sessions will appear here once your teacher starts marking attendance.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto -mx-3 sm:-mx-4 md:-mx-6 sm:mx-0">
-                      <div className="inline-block min-w-full align-middle">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gradient-to-r from-blue-600 to-blue-500">
-                            <tr>
-                              <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">S.No</th>
-                              <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Date</th>
-                              <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Status</th>
-                              <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-left text-xs font-semibold text-white uppercase tracking-wider hidden sm:table-cell">Marked At</th>
-                              <th className="px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 text-left text-xs font-semibold text-white uppercase tracking-wider hidden md:table-cell">Notes</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {attendanceData.sessions.map((session, index) => (
-                              <tr key={session.session_id} className="hover:bg-blue-50 transition-colors duration-150">
-                                <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">
-                                  {index + 1}
-                                </td>
-                                <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500">
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">
-                                      {new Date(session.session_date).toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric'
-                                      })}
-                                    </span>
-                                    <span className="text-xs text-gray-400 hidden sm:inline">
-                                      {new Date(session.session_date).toLocaleDateString('en-US', {
-                                        year: 'numeric',
-                                        weekday: 'short'
-                                      })}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
-                                  <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium rounded-full inline-flex items-center gap-1 ${getStatusColor(session.status)}`}>
-                                    <span className="hidden sm:inline">{getStatusIcon(session.status)}</span>
-                                    {getStatusText(session.status)}
-                                  </span>
-                                </td>
-                                <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden sm:table-cell">
-                                  {session.marked_at ? (
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="w-3 h-3 flex-shrink-0" />
-                                      <span>{new Date(session.marked_at).toLocaleTimeString('en-US', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        hour12: true
-                                      })}</span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-gray-400">Not marked</span>
-                                  )}
-                                </td>
-                                <td className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 md:py-4 text-xs sm:text-sm text-gray-500 break-words max-w-xs hidden md:table-cell">
-                                  {session.notes || '-'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                    <>
+                      {/* 1. Mobile Cards Layout (< 768px) */}
+                      <div className="block md:hidden divide-y divide-gray-100 p-2">
+                    {attendanceData.sessions.map((session, index) => (
+                      <div key={session.session_id} className="p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+                              {index + 1}
+                            </span>
+                            <div className="flex items-center gap-1.5 font-bold text-gray-900 text-sm">
+                              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span>
+                                {new Date(session.session_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase shrink-0 ${getStatusColor(session.status)}`}>
+                            {getStatusIcon(session.status)}
+                            <span>{getStatusText(session.status)}</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t border-gray-50">
+                          <span className="flex items-center gap-1 text-gray-600 font-medium">
+                            <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span>{session.marked_at ? formatISTTime(session.marked_at) : 'Not marked'}</span>
+                          </span>
+                          {session.notes && (
+                            <span className="text-gray-500 truncate max-w-[150px] italic">
+                              {session.notes}
+                            </span>
+                          )}
+                        </div>
                       </div>
+                    ))}
+                  </div>
+
+                  {/* 2. Desktop Table Layout (>= 768px) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <div className="inline-block min-w-full align-middle">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gradient-to-r from-blue-600 to-blue-500">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">S.No</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Marked At</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {attendanceData.sessions.map((session, index) => (
+                            <tr key={session.session_id} className="hover:bg-blue-50 transition-colors duration-150">
+                              <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {index + 1}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-900">
+                                    {new Date(session.session_date).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric'
+                                    })}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    {new Date(session.session_date).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      weekday: 'short'
+                                    })}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full inline-flex items-center gap-1 ${getStatusColor(session.status)}`}>
+                                  {getStatusIcon(session.status)}
+                                  {getStatusText(session.status)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {session.marked_at ? (
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5 flex-shrink-0 text-gray-400" />
+                                    <span>{formatISTTime(session.marked_at)}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 italic">Not marked</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-500 break-words max-w-xs">
+                                {session.notes || '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  )}
+                  </div>
+                </>
+              )}
                 </div>
               </div>
             </div>

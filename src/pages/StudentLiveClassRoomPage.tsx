@@ -40,7 +40,12 @@ import {
   Eye,
   EyeOff,
   RotateCcw,
-  ImageIcon
+  ImageIcon,
+  MessageSquare,
+  Send,
+  Reply,
+  CornerDownRight,
+  X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -172,6 +177,96 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
   const [showStudentPip, setShowStudentPip] = useState<boolean>(true);
 
   const [showAttendees, setShowAttendees] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const showChatRef = useRef(showChat);
+  showChatRef.current = showChat;
+
+  const [chatMessages, setChatMessages] = useState<any[]>(() => {
+    try {
+      const saved = liveClass?.id && sessionStorage.getItem(`isml_chat_${liveClass.id}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch (_) {
+      return [];
+    }
+  });
+  const [chatInputText, setChatInputText] = useState('');
+  const [replyingTo, setReplyingTo] = useState<any>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Play subtle incoming chat notification chime
+  const playChatChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } catch (_) {}
+  };
+
+  // Auto-scroll chat feed to bottom on new messages
+  useEffect(() => {
+    if (showChat) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, showChat]);
+
+  // Send message to classroom via reliable data channel
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const text = chatInputText.trim();
+    if (!text || !room || room.state !== 'connected' || !room.localParticipant) return;
+
+    const myName = localParticipant.name || 'Student';
+    const myRole = 'student';
+    const myRoleLabel = 'Student';
+
+    const newMsg = {
+      type: 'CHAT_MESSAGE',
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      senderId: localParticipant.identity,
+      senderName: myName,
+      role: myRole,
+      roleLabel: myRoleLabel,
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      replyTo: replyingTo ? {
+        id: replyingTo.id,
+        senderName: replyingTo.senderName,
+        roleLabel: replyingTo.roleLabel,
+        text: replyingTo.text
+      } : null
+    };
+
+    try {
+      const payload = new TextEncoder().encode(JSON.stringify(newMsg));
+      await room.localParticipant.publishData(payload, { reliable: true });
+    } catch (err) {
+      console.warn('Failed to broadcast chat:', err);
+    }
+
+    setChatMessages((prev) => {
+      const next = [...prev, newMsg];
+      if (liveClass?.id) {
+        sessionStorage.setItem(`isml_chat_${liveClass.id}`, JSON.stringify(next));
+      }
+      return next;
+    });
+
+    setChatInputText('');
+    setReplyingTo(null);
+  };
+
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(() => {
@@ -291,16 +386,32 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
           toast('The instructor has ended this live class session.', { icon: '👋', duration: 4000 });
           onLeave();
           return;
-        } else if (data.type === 'CHAT') {
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              sender: data.sender || participant?.name || participant?.identity || 'Classmate',
-              text: data.text || data.message,
-              time: data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              isMe: false
+        } else if (data.type === 'CHAT_MESSAGE' || data.type === 'CHAT') {
+          const incomingMsg = {
+            id: data.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            senderId: data.senderId || participant?.identity || 'peer',
+            senderName: data.senderName || data.sender || participant?.name || 'Classmate',
+            role: data.role || (participant ? getParticipantRole(participant) : 'student'),
+            roleLabel: data.roleLabel || (data.role === 'teacher' ? 'Instructor (Host)' : (data.role === 'academic' ? 'Academic Manager' : (data.role === 'admin' ? 'Administrator' : 'Student'))),
+            text: data.text || data.message || '',
+            time: data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            replyTo: data.replyTo || null
+          };
+
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === incomingMsg.id)) return prev;
+            const next = [...prev, incomingMsg];
+            if (liveClass?.id) {
+              sessionStorage.setItem(`isml_chat_${liveClass.id}`, JSON.stringify(next));
             }
-          ]);
+            return next;
+          });
+
+          if (!showChatRef.current) {
+            setUnreadChatCount((prev) => prev + 1);
+            playChatChime();
+          }
+          return;
         } else if (data.type === 'HAND_RAISE') {
           if (data.studentId !== localParticipant.identity) {
             toast(`${data.studentName || participant?.name || 'A classmate'} raised their hand ✋`, {
@@ -997,6 +1108,163 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             </div>
           </div>
         )}
+
+        {/* Live Classroom Chat Drawer (Mobile Full Sheet, Desktop Side Drawer) */}
+        {showChat && (
+          <aside className="fixed sm:relative inset-y-0 right-0 w-full sm:w-84 md:w-96 bg-slate-900/98 sm:bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 flex flex-col z-40 sm:z-30 transition-all duration-300 shadow-2xl shrink-0 h-full">
+            {/* Chat Header */}
+            <div className="p-3.5 sm:p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 backdrop-blur shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400 shrink-0">
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-xs sm:text-sm text-white truncate">Classroom Chat</h3>
+                  <p className="text-[10px] text-slate-400 flex items-center gap-1.5 truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                    <span>Live Q&A • {chatMessages.length} message{chatMessages.length !== 1 ? 's' : ''}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowChat(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                title="Close Chat"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Chat Messages Feed */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+              {chatMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                  <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-3">
+                    <MessageSquare className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-300">No messages yet</p>
+                  <p className="text-[11px] text-slate-400 mt-1 max-w-[200px]">
+                    Have a question or comment? Type a message below to chat with the instructor and classmates!
+                  </p>
+                </div>
+              ) : (
+                chatMessages.map((msg) => {
+                  const isMe = msg.senderId === localParticipant.identity;
+                  const isMsgTeacher = msg.role === 'teacher';
+                  const isMsgAcademic = msg.role === 'academic' || msg.role === 'admin';
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex flex-col group ${isMe ? 'items-end' : 'items-start'}`}
+                    >
+                      {/* Meta: Sender Name, Role Badge, Time */}
+                      <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px]">
+                        <span className={`font-semibold ${isMe ? 'text-purple-300' : (isMsgTeacher ? 'text-emerald-300' : (isMsgAcademic ? 'text-amber-300' : 'text-slate-300'))}`}>
+                          {msg.senderName} {isMe && <span className="text-[10px] text-slate-400 font-normal">(You)</span>}
+                        </span>
+
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${
+                          isMsgTeacher
+                            ? 'bg-purple-950/80 text-purple-300 border-purple-500/40'
+                            : isMsgAcademic
+                            ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}>
+                          {msg.roleLabel || (isMsgTeacher ? 'Instructor' : (isMsgAcademic ? 'Academic' : 'Student'))}
+                        </span>
+
+                        <span className="text-[10px] text-slate-400">{msg.time}</span>
+                      </div>
+
+                      {/* Message Bubble */}
+                      <div className="relative max-w-[88%] sm:max-w-[82%]">
+                        <div className={`p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm break-words ${
+                          isMe
+                            ? 'bg-purple-600 text-white rounded-tr-sm'
+                            : isMsgTeacher
+                            ? 'bg-slate-800 text-slate-100 border border-purple-500/40 rounded-tl-sm'
+                            : isMsgAcademic
+                            ? 'bg-slate-800 text-slate-100 border border-amber-500/40 rounded-tl-sm'
+                            : 'bg-slate-800 text-slate-200 border border-slate-700/70 rounded-tl-sm'
+                        }`}>
+                          {/* Quoted Reply Block */}
+                          {msg.replyTo && (
+                            <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-black/35 border-l-2 border-amber-400 text-[11px]">
+                              <p className="font-semibold text-amber-300 text-[10px]">
+                                ↩ Replying to {msg.replyTo.senderName} ({msg.replyTo.roleLabel})
+                              </p>
+                              <p className="line-clamp-2 text-slate-300 italic text-[11px] mt-0.5">
+                                "{msg.replyTo.text}"
+                              </p>
+                            </div>
+                          )}
+
+                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                        </div>
+
+                        {/* Quick Reply Button on Hover */}
+                        <button
+                          onClick={() => setReplyingTo(msg)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity absolute -bottom-2.5 right-2 px-2 py-0.5 rounded-full bg-slate-750 hover:bg-purple-600 border border-slate-700 text-slate-300 hover:text-white shadow text-[10px] flex items-center gap-1 cursor-pointer"
+                          title="Reply to this message"
+                        >
+                          <Reply className="w-3 h-3" />
+                          <span className="text-[9px] font-semibold">Reply</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Chat Input Footer */}
+            <div className="p-3 border-t border-slate-800 bg-slate-900/95 shrink-0">
+              {/* Replying Banner */}
+              {replyingTo && (
+                <div className="px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-xl mb-2 flex items-center justify-between text-xs animate-in slide-in-from-bottom-2">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <CornerDownRight className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span className="text-slate-400 text-[11px]">Replying to</span>
+                    <span className="font-semibold text-purple-300 text-[11px] truncate">{replyingTo.senderName}</span>
+                    <span className="text-slate-400 truncate max-w-[140px] italic text-[11px]">"{replyingTo.text}"</span>
+                  </div>
+                  <button
+                    onClick={() => setReplyingTo(null)}
+                    className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                    title="Cancel reply"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={chatInputText}
+                  onChange={(e) => setChatInputText(e.target.value)}
+                  placeholder={replyingTo ? `Reply to ${replyingTo.senderName}...` : 'Type a message to class...'}
+                  className="flex-1 px-3 py-2 bg-slate-800/90 border border-slate-700 focus:border-purple-500 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInputText.trim()}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    chatInputText.trim()
+                      ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  }`}
+                  title="Send Message"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          </aside>
+        )}
       </div>
 
       {/* Bottom Floating Control Bar */}
@@ -1059,9 +1327,33 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
           <span className="hidden sm:inline">{isHandRaised ? 'Hand Raised ✋' : 'Raise Hand'}</span>
         </button>
 
+        {/* Toggle Chat */}
+        <button
+          onClick={() => {
+            setShowChat((prev) => !prev);
+            setUnreadChatCount(0);
+            if (!showChat) setShowAttendees(false);
+          }}
+          className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center relative transition-all cursor-pointer ${showChat
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+            }`}
+          title="Classroom Chat"
+        >
+          <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
+          {unreadChatCount > 0 && !showChat && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-4.5 h-4.5 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-bounce shadow">
+              {unreadChatCount > 9 ? '9+' : unreadChatCount}
+            </span>
+          )}
+        </button>
+
         {/* Toggle Attendees */}
         <button
-          onClick={() => setShowAttendees(!showAttendees)}
+          onClick={() => {
+            setShowAttendees((prev) => !prev);
+            if (!showAttendees) setShowChat(false);
+          }}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center relative transition-all cursor-pointer ${showAttendees
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'

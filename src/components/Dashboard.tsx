@@ -14,6 +14,7 @@ import {
   getStudentDetails,
   getEnrolledBatches,
   getBatches,
+  getStudentAttendance,
 } from "../services/api";
 import { getLiveClasses, getBatchRecordings, getRecordingStreamUrl, LiveClass, LiveClassRecording } from "../services/liveClassApi";
 import { Enrollment, Batch } from "../types/auth";
@@ -61,6 +62,25 @@ const formatISTDate = (isoString?: string) => {
     return '';
   }
 };
+
+export interface BatchAttendanceSummary {
+  batchId: string;
+  batchName: string;
+  totalSessions: number;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  excusedCount: number;
+  percentage: number;
+  sessions: Array<{
+    session_id: string;
+    session_date: string;
+    status: 'present' | 'absent' | 'late' | 'excused' | 'not_marked';
+    marked_at: string | null;
+    notes: string | null;
+  }>;
+  todayStatus: 'present' | 'absent' | 'late' | 'excused' | 'not_marked' | 'no_session';
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -110,6 +130,25 @@ const Dashboard = () => {
   const [loadingStream, setLoadingStream] = useState(false);
   const [liveClassFilter, setLiveClassFilter] = useState<'all' | 'LIVE' | 'SCHEDULED' | 'COMPLETED'>('all');
   const [recordingSearchQuery, setRecordingSearchQuery] = useState('');
+
+  // Attendance states
+  const [attendanceSummaries, setAttendanceSummaries] = useState<Record<string, BatchAttendanceSummary>>({});
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [selectedAttendanceBatchId, setSelectedAttendanceBatchId] = useState<string>('');
+
+  const activeEnrollments = useMemo(() => {
+    return enrollments.filter((e) => e.status && e.batches?.batch_id);
+  }, [enrollments]);
+
+  const currentAttendanceSummary = useMemo(() => {
+    if (selectedAttendanceBatchId && attendanceSummaries[selectedAttendanceBatchId]) {
+      return attendanceSummaries[selectedAttendanceBatchId];
+    }
+    if (activeEnrollments.length > 0) {
+      return attendanceSummaries[activeEnrollments[0].batches.batch_id] || null;
+    }
+    return null;
+  }, [attendanceSummaries, selectedAttendanceBatchId, activeEnrollments]);
 
   // Real-time ticker to auto-disable live class buttons exactly on schedule expiry (Asia/Kolkata)
   const [currentTimeMs, setCurrentTimeMs] = useState(Date.now());
@@ -250,6 +289,64 @@ const Dashboard = () => {
       window.removeEventListener("focus", handleFocus);
     };
   }, [enrollments]);
+
+  // 🔹 Fetch Attendance for all active enrolled batches
+  useEffect(() => {
+    if (!token || activeEnrollments.length === 0) {
+      setAttendanceSummaries({});
+      return;
+    }
+
+    const fetchAttendanceForAllBatches = async () => {
+      setLoadingAttendance(true);
+      try {
+        const summaries: Record<string, BatchAttendanceSummary> = {};
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        await Promise.all(
+          activeEnrollments.map(async (e) => {
+            const bId = e.batches.batch_id;
+            try {
+              const res = await getStudentAttendance(bId, token);
+              if (res && res.success && res.data) {
+                const s = res.data.summary || {};
+                const sessions = (res.data.sessions || []).filter((sess: any) => {
+                  const sDate = sess.session_date ? sess.session_date.split('T')[0] : '';
+                  return sDate >= '2026-10-07';
+                });
+                const todaySession = sessions.find((sess: any) => sess.session_date === todayStr);
+
+                summaries[bId] = {
+                  batchId: bId,
+                  batchName: e.batches.batch_name,
+                  totalSessions: s.total_sessions || 0,
+                  presentCount: s.present_count || 0,
+                  absentCount: s.absent_count || 0,
+                  lateCount: s.late_count || 0,
+                  excusedCount: s.excused_count || 0,
+                  percentage: s.attendance_percentage || 0,
+                  sessions: sessions,
+                  todayStatus: todaySession ? todaySession.status : 'no_session',
+                };
+              }
+            } catch (err) {
+              console.error(`Failed to fetch attendance for batch ${bId}:`, err);
+            }
+          })
+        );
+
+        setAttendanceSummaries(summaries);
+        setSelectedAttendanceBatchId((prev) => {
+          if (prev && summaries[prev]) return prev;
+          return activeEnrollments[0]?.batches?.batch_id || '';
+        });
+      } finally {
+        setLoadingAttendance(false);
+      }
+    };
+
+    fetchAttendanceForAllBatches();
+  }, [activeEnrollments, token]);
 
   // 🔹 Play Recording Stream Modal
   const handleWatchRecording = async (rec: LiveClassRecording) => {
@@ -506,6 +603,231 @@ const Dashboard = () => {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* 📊 STUDENT ATTENDANCE OVERVIEW WIDGET */}
+              {activeEnrollments.length > 0 && (
+                <div className="mb-10 bg-white rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                  {/* Top Bar Header */}
+                  <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-blue-50/50">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-md">
+                        <CheckCircle2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-bold text-gray-900">Your Attendance & Participation</h2>
+                          <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Live Class Tracker
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Verified instructor attendance across your active enrolled batches
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Batch Switcher (if more than 1 active batch) */}
+                      {activeEnrollments.length > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-500 font-medium hidden md:inline">Batch:</span>
+                          <select
+                            value={selectedAttendanceBatchId}
+                            onChange={(e) => setSelectedAttendanceBatchId(e.target.value)}
+                            className="text-xs font-semibold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                          >
+                            {activeEnrollments.map((e) => (
+                              <option key={e.batches.batch_id} value={e.batches.batch_id}>
+                                {e.batches.batch_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* View Detailed Log Button */}
+                      {(selectedAttendanceBatchId || activeEnrollments[0]?.batches?.batch_id) && (
+                        <button
+                          onClick={() => navigate(`/class/${selectedAttendanceBatchId || activeEnrollments[0]?.batches?.batch_id}/attendance`)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-xl shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                        >
+                          <span>Full Log</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Body Content */}
+                  {loadingAttendance && !currentAttendanceSummary ? (
+                    <div className="p-8 text-center text-sm text-gray-500">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600 mb-2"></div>
+                      <p>Loading attendance data...</p>
+                    </div>
+                  ) : currentAttendanceSummary ? (
+                    <div className="p-6">
+                      {/* Metric Cards Row */}
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        {/* 1. Overall Percentage */}
+                        <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/50 flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-emerald-800">Attendance Rate</span>
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                              currentAttendanceSummary.percentage >= 75
+                                ? 'bg-emerald-200/80 text-emerald-900'
+                                : currentAttendanceSummary.percentage >= 60
+                                ? 'bg-amber-200 text-amber-900'
+                                : 'bg-red-200 text-red-900'
+                            }`}>
+                              {currentAttendanceSummary.percentage >= 75 ? 'Good Standing' : 'Low Attendance'}
+                            </span>
+                          </div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-3xl font-black text-gray-900">
+                              {currentAttendanceSummary.percentage}%
+                            </span>
+                          </div>
+                          {/* Progress Bar */}
+                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-3 overflow-hidden">
+                            <div
+                              className={`h-1.5 rounded-full ${
+                                currentAttendanceSummary.percentage >= 75
+                                  ? 'bg-emerald-500'
+                                  : currentAttendanceSummary.percentage >= 60
+                                  ? 'bg-amber-500'
+                                  : 'bg-red-500'
+                              }`}
+                              style={{ width: `${Math.min(currentAttendanceSummary.percentage, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 2. Attended Classes */}
+                        <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/50 flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-blue-800">Classes Attended</span>
+                            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-3xl font-black text-gray-900">
+                              {currentAttendanceSummary.presentCount}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium">
+                              / {currentAttendanceSummary.totalSessions} conducted
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-blue-600 mt-3 font-semibold">
+                            {currentAttendanceSummary.totalSessions > 0
+                              ? `${Math.round((currentAttendanceSummary.presentCount / currentAttendanceSummary.totalSessions) * 100)}% participation`
+                              : '0 sessions conducted'}
+                          </p>
+                        </div>
+
+                        {/* 3. Missed Sessions */}
+                        <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/50 flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-amber-800">Missed Sessions</span>
+                            <Clock3 className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-3xl font-black text-gray-900">
+                              {currentAttendanceSummary.absentCount}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium">sessions</span>
+                          </div>
+                          <p className="text-[11px] text-amber-600 mt-3 font-semibold">
+                            {currentAttendanceSummary.lateCount > 0 ? `${currentAttendanceSummary.lateCount} arrived late` : 'Keep absence minimal'}
+                          </p>
+                        </div>
+
+                        {/* 4. Today's Status */}
+                        <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-gray-700">Today's Class Status</span>
+                            <Calendar className="w-4 h-4 text-gray-500" />
+                          </div>
+                          <div>
+                            {currentAttendanceSummary.todayStatus === 'present' && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-100 text-green-800 text-xs font-bold shadow-xs">
+                                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                <span>Present Today</span>
+                              </div>
+                            )}
+                            {currentAttendanceSummary.todayStatus === 'absent' && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-100 text-red-800 text-xs font-bold shadow-xs">
+                                <X className="w-4 h-4 text-red-600" />
+                                <span>Absent Today</span>
+                              </div>
+                            )}
+                            {currentAttendanceSummary.todayStatus === 'late' && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800 text-xs font-bold shadow-xs">
+                                <Clock3 className="w-4 h-4 text-amber-600" />
+                                <span>Marked Late</span>
+                              </div>
+                            )}
+                            {currentAttendanceSummary.todayStatus === 'not_marked' && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-yellow-100 text-yellow-800 text-xs font-bold shadow-xs">
+                                <Clock className="w-4 h-4 text-yellow-600" />
+                                <span>Pending Marking</span>
+                              </div>
+                            )}
+                            {currentAttendanceSummary.todayStatus === 'no_session' && (
+                              <div className="text-xs text-gray-500 font-medium">
+                                No session conducted today
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-3 font-medium">
+                            {new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Recent Session History Preview */}
+                      {currentAttendanceSummary.sessions.length > 0 && (
+                        <div className="pt-4 border-t border-gray-100">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              Recent Session Logs
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Batch: <strong className="text-gray-800">{currentAttendanceSummary.batchName}</strong>
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {currentAttendanceSummary.sessions.slice(0, 3).map((s) => (
+                              <div
+                                key={s.session_id}
+                                className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-200/80 text-xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                                  <span className="font-bold text-gray-700">{s.session_date}</span>
+                                </div>
+                                <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] uppercase ${
+                                  s.status === 'present'
+                                    ? 'bg-green-100 text-green-700'
+                                    : s.status === 'absent'
+                                    ? 'bg-red-100 text-red-700'
+                                    : s.status === 'late'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-gray-200 text-gray-600'
+                                }`}>
+                                  {s.status === 'present' ? '✓ Present' : s.status === 'absent' ? '✗ Absent' : s.status}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-xs text-gray-500">
+                      No attendance sessions recorded yet for this batch.
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -933,18 +1255,44 @@ const Dashboard = () => {
                               </div>
                             </div>
 
-                            {/* Action Button (visible on hover for active) */}
+                            {/* Action Buttons for active */}
                             {enrollment.status && (
-                              <button
-                                className="w-full mt-4 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTileClick(enrollment);
-                                }}
-                              >
-                                Join Class
-                                <ArrowRight className="w-4 h-4" />
-                              </button>
+                              <div className="mt-4 space-y-2">
+                                {attendanceSummaries[enrollment.batches.batch_id] && (
+                                  <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg text-xs">
+                                    <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>Attendance:</span>
+                                    </div>
+                                    <span className="font-extrabold text-emerald-900">
+                                      {attendanceSummaries[enrollment.batches.batch_id].percentage}% ({attendanceSummaries[enrollment.batches.batch_id].presentCount}/{attendanceSummaries[enrollment.batches.batch_id].totalSessions})
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex gap-2">
+                                  <button
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTileClick(enrollment);
+                                    }}
+                                  >
+                                    <span>Join Class</span>
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-xl border border-emerald-200 transition-all flex items-center gap-1 cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate(`/class/${enrollment.batches.batch_id}/attendance`);
+                                    }}
+                                    title="View Attendance History"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Records</span>
+                                  </button>
+                                </div>
+                              </div>
                             )}
 
                             {!enrollment.status && (
@@ -1426,6 +1774,201 @@ const Dashboard = () => {
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No Recorded Lectures Available</h3>
                   <p className="text-gray-500 text-sm max-w-md mx-auto">
                     Live class recordings will be processed and automatically archived here after each session concludes.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 🔹 VIEW: ATTENDANCE - Comprehensive Student Attendance View */}
+          {currentView === 'attendance' && (
+            <>
+              {/* Header Banner */}
+              <div className="relative bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 rounded-3xl p-4 sm:p-6 md:p-8 mb-6 shadow-xl overflow-hidden text-white">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+                  <div className="flex items-start sm:items-center gap-3 min-w-0">
+                    <div className="bg-white/20 backdrop-blur-sm p-2.5 sm:p-3.5 rounded-2xl shadow-lg shrink-0">
+                      <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight">Your Attendance History</h2>
+                      <p className="text-emerald-100 text-xs sm:text-sm mt-0.5 leading-relaxed">
+                        Official live session attendance registry tracked by your course instructors
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Batch Selector - Mobile Responsive & Overflow Protected */}
+                  {activeEnrollments.length > 0 && (
+                    <div className="w-full md:w-auto flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 bg-white/15 backdrop-blur-md p-2.5 sm:p-2 rounded-2xl border border-white/20 min-w-0 max-w-full">
+                      <span className="text-xs text-emerald-100 font-bold shrink-0">Batch:</span>
+                      <select
+                        value={selectedAttendanceBatchId}
+                        onChange={(e) => setSelectedAttendanceBatchId(e.target.value)}
+                        className="w-full md:w-auto max-w-full bg-white text-gray-900 text-xs sm:text-sm font-bold px-3 py-2 rounded-xl border border-emerald-300 focus:outline-none focus:ring-2 focus:ring-white cursor-pointer shadow-sm truncate"
+                      >
+                        {activeEnrollments.map((e) => (
+                          <option key={e.batches.batch_id} value={e.batches.batch_id}>
+                            {e.batches.batch_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Stats row inside banner */}
+                {currentAttendanceSummary && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 mt-5 sm:mt-8">
+                    <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-3.5 sm:p-4 border border-white/20 shadow-xs">
+                      <p className="text-emerald-100 text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Attendance Rate</p>
+                      <p className="text-2xl sm:text-3xl font-black mt-1 text-white">{currentAttendanceSummary.percentage}%</p>
+                    </div>
+                    <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-3.5 sm:p-4 border border-white/20 shadow-xs">
+                      <p className="text-emerald-100 text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Attended Sessions</p>
+                      <p className="text-2xl sm:text-3xl font-black mt-1 text-white">{currentAttendanceSummary.presentCount}</p>
+                    </div>
+                    <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-3.5 sm:p-4 border border-white/20 shadow-xs">
+                      <p className="text-emerald-100 text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Missed Sessions</p>
+                      <p className="text-2xl sm:text-3xl font-black mt-1 text-white">{currentAttendanceSummary.absentCount}</p>
+                    </div>
+                    <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-3.5 sm:p-4 border border-white/20 shadow-xs">
+                      <p className="text-emerald-100 text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Total Classes</p>
+                      <p className="text-2xl sm:text-3xl font-black mt-1 text-white">{currentAttendanceSummary.totalSessions}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sessions List */}
+              {loadingAttendance && !currentAttendanceSummary ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
+                    <p className="text-gray-500 font-medium">Loading session history...</p>
+                  </div>
+                </div>
+              ) : currentAttendanceSummary && currentAttendanceSummary.sessions.length > 0 ? (
+                <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden mb-12">
+                  <div className="p-4 sm:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-gray-900">Session Breakdown</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Batch: <span className="font-semibold text-gray-700">{currentAttendanceSummary.batchName}</span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/class/${currentAttendanceSummary.batchId}/attendance`)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                    >
+                      <span>Full Attendance Page</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* 1. Mobile Cards View (< 768px) */}
+                  <div className="block md:hidden divide-y divide-gray-100 p-2">
+                    {currentAttendanceSummary.sessions.map((sess, idx) => (
+                      <div key={sess.session_id} className="p-3.5 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs flex items-center justify-center shrink-0">
+                              {idx + 1}
+                            </span>
+                            <div className="flex items-center gap-1.5 font-bold text-gray-900 text-sm">
+                              <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>{sess.session_date}</span>
+                            </div>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase shrink-0 ${
+                            sess.status === 'present'
+                              ? 'bg-green-100 text-green-800'
+                              : sess.status === 'absent'
+                              ? 'bg-red-100 text-red-800'
+                              : sess.status === 'late'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {sess.status === 'present' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                            {sess.status === 'absent' && <X className="w-3.5 h-3.5" />}
+                            {sess.status === 'late' && <Clock3 className="w-3.5 h-3.5" />}
+                            <span>{sess.status}</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t border-gray-50">
+                          <span className="flex items-center gap-1 text-gray-600 font-medium">
+                            <Clock3 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span>{sess.marked_at ? formatISTTime(sess.marked_at) : 'Class Session'}</span>
+                          </span>
+                          {sess.notes && (
+                            <span className="text-gray-500 truncate max-w-[150px] italic">
+                              {sess.notes}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 2. Desktop Table View (>= 768px) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-gray-50/70 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        <tr>
+                          <th className="py-3.5 px-6">#</th>
+                          <th className="py-3.5 px-6">Session Date</th>
+                          <th className="py-3.5 px-6">Status</th>
+                          <th className="py-3.5 px-6">Verification</th>
+                          <th className="py-3.5 px-6">Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {currentAttendanceSummary.sessions.map((sess, idx) => (
+                          <tr key={sess.session_id} className="hover:bg-gray-50/80 transition-colors">
+                            <td className="py-4 px-6 text-gray-400 font-mono text-xs">{idx + 1}</td>
+                            <td className="py-4 px-6 font-semibold text-gray-800">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-emerald-600" />
+                                <span>{sess.session_date}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                                sess.status === 'present'
+                                  ? 'bg-green-100 text-green-800'
+                                  : sess.status === 'absent'
+                                  ? 'bg-red-100 text-red-800'
+                                  : sess.status === 'late'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {sess.status === 'present' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                {sess.status === 'absent' && <X className="w-3.5 h-3.5" />}
+                                {sess.status === 'late' && <Clock3 className="w-3.5 h-3.5" />}
+                                <span>{sess.status}</span>
+                              </span>
+                            </td>
+                            <td className="py-4 px-6 text-xs text-gray-500">
+                              {sess.marked_at ? formatISTTime(sess.marked_at) : 'Class Session'}
+                            </td>
+                            <td className="py-4 px-6 text-xs text-gray-500">
+                              {sess.notes || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-16 px-4 bg-white rounded-2xl border border-gray-200 shadow-sm mb-12">
+                  <div className="w-20 h-20 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">No Attendance Sessions Yet</h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    Your tutor has not yet recorded attendance sessions for this batch. Check back after your next live class!
                   </p>
                 </div>
               )}

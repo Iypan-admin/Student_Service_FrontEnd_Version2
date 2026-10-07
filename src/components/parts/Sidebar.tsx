@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentDetails } from '../../services/api';
 import { StudentDetails } from '../../types/auth';
-import { Home, BookOpen, LogOut, Calendar, User, CreditCard, Radio, PlayCircle } from 'lucide-react';
+import { Home, BookOpen, LogOut, Calendar, User, CreditCard, Radio, PlayCircle, CheckCircle2 } from 'lucide-react';
 import logoImage from '../../assets/images/logo.png';
 
 interface SidebarProps {
@@ -105,6 +105,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView = 'dashboard', onViewChan
       if (onViewChange) {
         setTimeout(() => onViewChange('recordings'), 100);
       }
+    } else if (view === 'attendance') {
+      navigate('/dashboard', { state: { view: 'attendance' } });
+      if (onViewChange) {
+        setTimeout(() => onViewChange('attendance'), 100);
+      }
     } else {
       // For other views, use callback if available
       if (onViewChange) onViewChange(view);
@@ -182,6 +187,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView = 'dashboard', onViewChan
                 view: "recordings",
                 icon: PlayCircle,
                 description: "Past class recordings",
+              },
+              {
+                label: "Attendance",
+                view: "attendance",
+                icon: CheckCircle2,
+                description: "Track class attendance",
               },
               {
                 label: "Payment",

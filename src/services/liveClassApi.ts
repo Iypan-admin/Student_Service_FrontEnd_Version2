@@ -35,13 +35,29 @@ export interface LiveClassRecording {
   live_class_id: string;
   batch_id: string;
   egress_id?: string;
-  file_path: string;
+  file_path?: string;
+  storage_object_path?: string;
   duration_seconds: number;
   file_size_bytes: number;
   status: 'RECORDING' | 'PROCESSING' | 'READY' | 'FAILED';
   recording_started_at?: string;
   recording_ended_at?: string;
   created_at: string;
+  part_number?: number;
+  part_label?: string;
+  total_parts?: number;
+  display_title?: string;
+  live_classes?: {
+    id?: string;
+    title?: string;
+    description?: string;
+    session_number?: number;
+    teachers?: {
+      id?: string;
+      name?: string;
+      full_name?: string;
+    };
+  };
   live_class?: {
     title: string;
     tutor?: {
@@ -141,8 +157,13 @@ const normalizeRecording = (rec: any): LiveClassRecording => {
     recording_started_at: rec.recording_started_at || rec.created_at,
     recording_ended_at: rec.recording_ended_at,
     created_at: rec.created_at,
+    part_number: rec.part_number,
+    part_label: rec.part_label,
+    total_parts: rec.total_parts,
+    display_title: rec.display_title || (rec.part_number ? `${lc.title || 'Recorded Class'} (Part ${rec.part_number})` : (lc.title || 'Recorded Class')),
+    live_classes: rec.live_classes,
     live_class: {
-      title: lc.title || 'Recorded Class',
+      title: rec.display_title || lc.title || 'Recorded Class',
       tutor: lc.teachers || lc.tutor
     }
   };

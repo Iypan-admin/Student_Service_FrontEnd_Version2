@@ -491,14 +491,21 @@ export const StudentBatchRecordingsPage: React.FC = () => {
                 {/* Card Details */}
                 <div className="p-5 flex-1 flex flex-col justify-between">
                   <div>
-                    <h3 className="font-bold text-gray-900 text-base mb-2 group-hover:text-blue-600 transition-colors line-clamp-2">
-                      {rec.display_title || rec.live_class?.title || 'Interactive Live Class Session'}
-                    </h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      {rec.part_number && (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-700">
+                          Part {rec.part_number}
+                        </span>
+                      )}
+                      <h3 className="font-bold text-gray-900 text-base group-hover:text-blue-600 transition-colors line-clamp-2">
+                        {rec.display_title || rec.live_class?.title || rec.live_classes?.title || 'Interactive Live Class Session'}
+                      </h3>
+                    </div>
 
                     <div className="space-y-1.5 text-xs text-gray-500 mb-3">
                       <div className="flex items-center gap-2">
                         <User className="w-3.5 h-3.5 text-gray-400" />
-                        <span>Tutor: {rec.live_class?.tutor?.full_name || 'Faculty Member'}</span>
+                        <span>Tutor: {rec.live_class?.tutor?.full_name || rec.live_classes?.teachers?.full_name || rec.live_classes?.teachers?.name || 'Faculty Member'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5 text-gray-400" />

@@ -221,6 +221,16 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     }
   }, [chatMessages, showChat]);
 
+  // Unlock and ensure audio playback is unblocked for student
+  useEffect(() => {
+    if (!room) return;
+    try {
+      if (typeof room.startAudio === 'function') {
+        room.startAudio().catch(() => {});
+      }
+    } catch (_) {}
+  }, [room]);
+
   // Send message to classroom via reliable data channel
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -335,13 +345,24 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     };
   }, []);
 
-  // Request Whiteboard sync upon joining
+  // Request Whiteboard sync upon joining (Immediate + retry after 1.5s to ensure host is ready)
   useEffect(() => {
     if (!room || room.state !== 'connected' || !room.localParticipant) return;
-    try {
-      const payload = new TextEncoder().encode(JSON.stringify({ type: 'REQUEST_SYNC' }));
-      room.localParticipant.publishData(payload, { reliable: true }).catch(() => { });
-    } catch (e) { }
+    const sendSyncReq = () => {
+      try {
+        const payload = new TextEncoder().encode(JSON.stringify({ type: 'REQUEST_SYNC' }));
+        room.localParticipant.publishData(payload, { reliable: true }).catch(() => { });
+      } catch (e) { }
+    };
+
+    sendSyncReq();
+    const t1 = setTimeout(sendSyncReq, 1000);
+    const t2 = setTimeout(sendSyncReq, 2500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [room]);
 
   // Speaking state detection for animated aura rings

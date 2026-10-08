@@ -130,6 +130,7 @@ const Dashboard = () => {
   const [loadingStream, setLoadingStream] = useState(false);
   const [liveClassFilter, setLiveClassFilter] = useState<'all' | 'LIVE' | 'SCHEDULED' | 'COMPLETED'>('all');
   const [recordingSearchQuery, setRecordingSearchQuery] = useState('');
+  const [selectedRecordingBatchId, setSelectedRecordingBatchId] = useState<string>('');
 
   // Attendance states
   const [attendanceSummaries, setAttendanceSummaries] = useState<Record<string, BatchAttendanceSummary>>({});
@@ -139,6 +140,14 @@ const Dashboard = () => {
   const activeEnrollments = useMemo(() => {
     return enrollments.filter((e) => e.status && e.batches?.batch_id);
   }, [enrollments]);
+
+  // Ensure current selected batch always points to student's valid enrolled batch
+  const currentRecordingBatchId = useMemo(() => {
+    if (selectedRecordingBatchId && activeEnrollments.some(e => e.batches.batch_id === selectedRecordingBatchId)) {
+      return selectedRecordingBatchId;
+    }
+    return activeEnrollments[0]?.batches?.batch_id || '';
+  }, [selectedRecordingBatchId, activeEnrollments]);
 
   const currentAttendanceSummary = useMemo(() => {
     if (selectedAttendanceBatchId && attendanceSummaries[selectedAttendanceBatchId]) {
@@ -1624,156 +1633,265 @@ const Dashboard = () => {
           {/* 🔹 VIEW: RECORDINGS - 100% Online Recorded Lectures Library */}
           {currentView === 'recordings' && (
             <>
-              {/* Header Banner */}
-              <div className="relative bg-gradient-to-r from-purple-700 via-indigo-700 to-violet-800 rounded-2xl p-8 mb-8 shadow-xl overflow-hidden text-white">
+              {/* Header Banner - Sleek, Compact & Responsive on Mobile */}
+              <div className="relative bg-gradient-to-br from-purple-700 via-indigo-700 to-violet-800 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 shadow-xl overflow-hidden text-white">
                 <div className="absolute inset-0 opacity-10 pointer-events-none">
                   <div className="absolute transform rotate-45 -top-10 -right-10 w-44 h-44 bg-white rounded-full"></div>
                   <div className="absolute transform -rotate-45 -bottom-10 -left-10 w-36 h-36 bg-white rounded-full"></div>
                 </div>
 
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-white/20 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 shadow-inner">
-                      <PlayCircle className="w-8 h-8 text-white" />
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="bg-white/20 backdrop-blur-md p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-white/20 shadow-inner shrink-0">
+                      <PlayCircle className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                     </div>
-                    <div>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-white/20 text-white border border-white/30">
-                        Master Cloud Archive
+                    <div className="min-w-0">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider bg-white/20 text-white border border-white/30">
+                        Cloud Archive
                       </span>
-                      <h2 className="text-3xl font-extrabold tracking-tight mt-1">Recorded Lectures</h2>
-                      <p className="text-purple-100 text-sm mt-1">
-                        Watch recorded sessions anytime with secure high-speed cloud streaming
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight mt-1 truncate">Recorded Lectures</h2>
+                      <p className="text-purple-100 text-xs sm:text-sm mt-0.5 line-clamp-1 sm:line-clamp-none">
+                        Watch recorded sessions anytime with secure cloud streaming
                       </p>
                     </div>
                   </div>
 
                   {/* Search Bar */}
                   <div className="relative w-full md:w-72">
-                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-200" />
                     <input
                       type="text"
                       placeholder="Search recordings..."
                       value={recordingSearchQuery}
                       onChange={(e) => setRecordingSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 focus:bg-white focus:text-gray-900 text-white placeholder-purple-200 focus:placeholder-gray-400 border border-white/20 focus:outline-none transition-all text-sm"
+                      className="w-full pl-10 pr-4 py-2 sm:py-2.5 rounded-xl bg-white/15 hover:bg-white/20 focus:bg-white focus:text-gray-900 text-white placeholder-purple-200 focus:placeholder-gray-400 border border-white/20 focus:outline-none transition-all text-xs sm:text-sm"
                     />
                   </div>
                 </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
-                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
-                    <p className="text-xs text-purple-100 font-medium">Total Recordings</p>
-                    <p className="text-2xl font-bold mt-1 text-white">{recordings.length}</p>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
-                    <p className="text-xs text-purple-100 font-medium">Available for Stream</p>
-                    <p className="text-2xl font-bold mt-1 text-emerald-300">
-                      {recordings.filter(r => r.status === 'READY').length}
+                {/* Stats Row - 3 Compact Columns for Selected Enrolled Batch */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-4 sm:mt-6">
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-2.5 sm:p-3.5 border border-white/20 text-center sm:text-left">
+                    <p className="text-[10px] sm:text-xs text-purple-100 font-medium truncate">Total Lectures</p>
+                    <p className="text-lg sm:text-2xl font-black mt-0.5 sm:mt-1 text-white">
+                      {recordings.filter(r => currentRecordingBatchId ? r.batch_id === currentRecordingBatchId : true).length}
                     </p>
                   </div>
-                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/20">
-                    <p className="text-xs text-purple-100 font-medium">Processing</p>
-                    <p className="text-2xl font-bold mt-1 text-amber-300">
-                      {recordings.filter(r => r.status === 'PROCESSING' || r.status === 'RECORDING').length}
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-2.5 sm:p-3.5 border border-white/20 text-center sm:text-left">
+                    <p className="text-[10px] sm:text-xs text-purple-100 font-medium truncate">Available</p>
+                    <p className="text-lg sm:text-2xl font-black mt-0.5 sm:mt-1 text-emerald-300">
+                      {recordings.filter(r => (currentRecordingBatchId ? r.batch_id === currentRecordingBatchId : true) && r.status === 'READY').length}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md rounded-xl p-2.5 sm:p-3.5 border border-white/20 text-center sm:text-left">
+                    <p className="text-[10px] sm:text-xs text-purple-100 font-medium truncate">Processing</p>
+                    <p className="text-lg sm:text-2xl font-black mt-0.5 sm:mt-1 text-amber-300">
+                      {recordings.filter(r => (currentRecordingBatchId ? r.batch_id === currentRecordingBatchId : true) && (r.status === 'PROCESSING' || r.status === 'RECORDING')).length}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Recordings Grid */}
-              {recordings.filter(r => {
-                if (!recordingSearchQuery) return true;
-                const q = recordingSearchQuery.toLowerCase();
-                return (
-                  r.live_class?.title?.toLowerCase().includes(q) ||
-                  r.live_class?.tutor?.full_name?.toLowerCase().includes(q)
-                );
-              }).length > 0 ? (
+              {/* Student's Enrolled Batches Tabs Strip */}
+              {activeEnrollments.length > 0 && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <GraduationCap className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Your Enrolled Batch</span>
+                    </span>
+                    {activeEnrollments.length > 1 && (
+                      <span className="text-[11px] text-purple-600 font-semibold">
+                        Switch Batch ({activeEnrollments.length})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+                    {activeEnrollments.map((enr) => {
+                      const count = recordings.filter(r => r.batch_id === enr.batches.batch_id).length;
+                      const isSelected = currentRecordingBatchId === enr.batches.batch_id;
+                      return (
+                        <button
+                          key={enr.enrollment_id}
+                          onClick={() => setSelectedRecordingBatchId(enr.batches.batch_id)}
+                          className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2 max-w-[260px] sm:max-w-xs ${
+                            isSelected
+                              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25 ring-2 ring-purple-400/50'
+                              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 shadow-xs'
+                          }`}
+                        >
+                          <GraduationCap className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{enr.batches.batch_name}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono shrink-0 ${
+                            isSelected ? 'bg-purple-900/60 text-purple-100' : 'bg-purple-50 text-purple-700 border border-purple-200'
+                          }`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Active Enrolled Batch Info Card */}
+              {currentRecordingBatchId && activeEnrollments.some(e => e.batches.batch_id === currentRecordingBatchId) && (
+                <div className="mb-6 bg-white border border-purple-100 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 sm:p-3 bg-purple-50 text-purple-600 rounded-xl border border-purple-100 shrink-0">
+                      <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-extrabold text-gray-900 text-base sm:text-lg truncate">
+                          {activeEnrollments.find(e => e.batches.batch_id === currentRecordingBatchId)?.batches.batch_name}
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
+                          {recordings.filter(r => r.batch_id === currentRecordingBatchId).length} Lectures
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">
+                        Course: <strong className="text-gray-700">{activeEnrollments.find(e => e.batches.batch_id === currentRecordingBatchId)?.batches.courses?.course_name}</strong> • Tutor: <strong className="text-gray-700">{activeEnrollments.find(e => e.batches.batch_id === currentRecordingBatchId)?.batches.teachers?.users?.name || 'Instructor'}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate(`/class/${currentRecordingBatchId}/recordings`)}
+                    className="self-start sm:self-auto px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Batch Class Portal</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Recordings Grid - Filtered to Student's Enrolled Batch */}
+              {recordings
+                .filter(r => {
+                  if (currentRecordingBatchId && r.batch_id !== currentRecordingBatchId) {
+                    return false;
+                  }
+                  if (!recordingSearchQuery) return true;
+                  const q = recordingSearchQuery.toLowerCase();
+                  return (
+                    r.live_class?.title?.toLowerCase().includes(q) ||
+                    r.live_class?.tutor?.full_name?.toLowerCase().includes(q) ||
+                    r.display_title?.toLowerCase().includes(q)
+                  );
+                }).length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
                   {recordings
                     .filter(r => {
+                      if (currentRecordingBatchId && r.batch_id !== currentRecordingBatchId) {
+                        return false;
+                      }
                       if (!recordingSearchQuery) return true;
                       const q = recordingSearchQuery.toLowerCase();
                       return (
                         r.live_class?.title?.toLowerCase().includes(q) ||
-                        r.live_class?.tutor?.full_name?.toLowerCase().includes(q)
+                        r.live_class?.tutor?.full_name?.toLowerCase().includes(q) ||
+                        r.display_title?.toLowerCase().includes(q)
                       );
                     })
-                    .map(rec => (
-                      <div
-                        key={rec.id}
-                        className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
-                      >
-                        {/* Video Thumbnail Mock / Header */}
-                        <div className="relative bg-gradient-to-br from-slate-900 to-indigo-950 p-6 flex flex-col items-center justify-center min-h-[160px] text-white">
-                          <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center group-hover:scale-110 group-hover:bg-white/20 transition-all border border-white/20 shadow-lg cursor-pointer" onClick={() => handleWatchRecording(rec)}>
-                            <Play className="w-6 h-6 text-white fill-white ml-0.5" />
-                          </div>
+                    .map(rec => {
+                      const batchInfo = activeEnrollments.find(e => e.batches.batch_id === rec.batch_id)?.batches;
+                      return (
+                        <div
+                          key={rec.id}
+                          className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
+                        >
+                          {/* Video Thumbnail Mock / Header */}
+                          <div className="relative bg-gradient-to-br from-slate-900 to-indigo-950 p-6 flex flex-col items-center justify-center min-h-[160px] text-white">
+                            <div className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center group-hover:scale-110 group-hover:bg-white/20 transition-all border border-white/20 shadow-lg cursor-pointer" onClick={() => handleWatchRecording(rec)}>
+                              <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+                            </div>
 
-                          {/* Duration Badge */}
-                          <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-xs font-mono text-white flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-purple-300" />
-                            {formatDuration(rec.duration_seconds)}
-                          </div>
+                            {/* Duration Badge */}
+                            <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-xs font-mono text-white flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-purple-300" />
+                              {formatDuration(rec.duration_seconds)}
+                            </div>
 
-                          {/* Ready Badge */}
-                          <div className="absolute top-3 left-3">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                              rec.status === 'READY' ? 'bg-emerald-500/80 text-white' : 'bg-amber-500/80 text-white'
-                            }`}>
-                              {rec.status}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-6 flex-1 flex flex-col justify-between">
-                          <div>
-                            <h3 className="font-bold text-gray-900 text-lg mb-2 line-clamp-2">
-                              {rec.live_class?.title || 'Recorded Live Session'}
-                            </h3>
-
-                            <div className="space-y-2 my-4 text-xs text-gray-500">
-                              <div className="flex items-center gap-2">
-                                <User className="w-4 h-4 text-indigo-500" />
-                                <span>Tutor: <strong className="text-gray-800">{rec.live_class?.tutor?.full_name || 'Instructor'}</strong></span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-blue-500" />
-                                <span>Date: <strong className="text-gray-800">{new Date(rec.created_at).toLocaleDateString()}</strong></span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <HardDrive className="w-4 h-4 text-purple-500" />
-                                <span>Size: <strong className="text-gray-800">{formatFileSize(rec.file_size_bytes)}</strong></span>
-                              </div>
+                            {/* Ready Badge & Part Badge */}
+                            <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10 flex-wrap max-w-[85%]">
+                              {rec.part_number && (
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-blue-600 text-white shadow-sm">
+                                  Part {rec.part_number}
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                                rec.status === 'READY' ? 'bg-emerald-500/80 text-white' : 'bg-amber-500/80 text-white'
+                              }`}>
+                                {rec.status}
+                              </span>
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => handleWatchRecording(rec)}
-                            disabled={rec.status !== 'READY'}
-                            className={`w-full mt-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                              rec.status === 'READY'
-                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md shadow-purple-500/20 active:scale-95'
-                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
-                          >
-                            <Play className="w-4 h-4 fill-current" />
-                            <span>{rec.status === 'READY' ? 'Watch Lecture' : 'Processing Video...'}</span>
-                          </button>
+                          {/* Content */}
+                          <div className="p-6 flex-1 flex flex-col justify-between">
+                            <div>
+                              {batchInfo && (
+                                <div className="mb-2">
+                                  <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                    {batchInfo.batch_name}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 mb-2">
+                                {rec.part_number && (
+                                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-700 shrink-0">
+                                    Part {rec.part_number}
+                                  </span>
+                                )}
+                                <h3 className="font-bold text-gray-900 text-lg line-clamp-2">
+                                  {rec.display_title || rec.live_class?.title || rec.live_classes?.title || 'Recorded Live Session'}
+                                </h3>
+                              </div>
+
+                              <div className="space-y-2 my-4 text-xs text-gray-500">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-indigo-500" />
+                                  <span>Tutor: <strong className="text-gray-800">{rec.live_class?.tutor?.full_name || rec.live_classes?.teachers?.full_name || rec.live_classes?.teachers?.name || 'Instructor'}</strong></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-blue-500" />
+                                  <span>Date: <strong className="text-gray-800">{new Date(rec.created_at).toLocaleDateString()}</strong></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <HardDrive className="w-4 h-4 text-purple-500" />
+                                  <span>Size: <strong className="text-gray-800">{formatFileSize(rec.file_size_bytes)}</strong></span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleWatchRecording(rec)}
+                              disabled={rec.status !== 'READY'}
+                              className={`w-full mt-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                                rec.status === 'READY'
+                                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md shadow-purple-500/20 active:scale-95'
+                                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <Play className="w-4 h-4 fill-current" />
+                              <span>{rec.status === 'READY' ? 'Watch Lecture' : 'Processing Video...'}</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               ) : (
                 <div className="text-center py-16 px-4 bg-white rounded-2xl border border-gray-200 shadow-sm mb-12">
                   <div className="w-20 h-20 rounded-full bg-purple-50 text-purple-500 flex items-center justify-center mx-auto mb-4">
                     <FileVideo className="w-10 h-10" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">No Recorded Lectures Available</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    No Recordings for this Batch
+                  </h3>
                   <p className="text-gray-500 text-sm max-w-md mx-auto">
-                    Live class recordings will be processed and automatically archived here after each session concludes.
+                    No recorded sessions have been archived for this batch yet. When your tutor conducts and finishes a class session, recordings will automatically appear here.
                   </p>
                 </div>
               )}
@@ -1977,8 +2095,8 @@ const Dashboard = () => {
 
           {/* 🎬 Video Playback Modal */}
           {selectedRecording && (
-            <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="relative w-full max-w-4xl bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6">
+              <div className="relative w-full max-w-5xl lg:max-w-6xl max-h-[96vh] overflow-y-auto bg-slate-950 rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 flex flex-col animate-in fade-in zoom-in duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 px-6 bg-slate-900/80 border-b border-white/10 text-white">
                   <div className="flex items-center gap-3">

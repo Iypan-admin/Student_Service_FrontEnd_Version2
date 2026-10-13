@@ -171,6 +171,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     page: number;
     totalPages: number;
   } | null>(null);
+  const incomingWhiteboardChunksRef = useRef<Record<string, { chunks: (string | null)[]; timer: any }>>({});
 
   const [studentZoom, setStudentZoom] = useState<number>(1.0);
   const [studentFitMode, setStudentFitMode] = useState<'page' | 'width'>('page');
@@ -384,22 +385,52 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         const decoded = new TextDecoder().decode(payload);
         const data = JSON.parse(decoded);
 
-        if (data.type === 'WHITEBOARD_SYNC') {
-          if (data.dataUrl) {
-            setRemoteWhiteboardUrl(data.dataUrl);
+        let syncPayload = data;
+        if (data.type === 'WHITEBOARD_CHUNK') {
+          const { syncId, index, total, chunk } = data;
+          if (syncId && typeof index === 'number' && total) {
+            if (!incomingWhiteboardChunksRef.current[syncId]) {
+              incomingWhiteboardChunksRef.current[syncId] = {
+                chunks: new Array(total).fill(null),
+                timer: setTimeout(() => {
+                  delete incomingWhiteboardChunksRef.current[syncId];
+                }, 15000)
+              };
+            }
+            const record = incomingWhiteboardChunksRef.current[syncId];
+            record.chunks[index] = chunk;
+            if (record.chunks.every((c) => c !== null)) {
+              clearTimeout(record.timer);
+              try {
+                syncPayload = JSON.parse(record.chunks.join(''));
+              } catch (e) {
+                console.warn('Failed to parse reassembled whiteboard chunk payload:', e);
+                syncPayload = null;
+              }
+              delete incomingWhiteboardChunksRef.current[syncId];
+            } else {
+              // Waiting for remaining chunks
+              return;
+            }
           }
-          if (data.boardTheme) {
-            setRemoteBoardTheme(data.boardTheme);
+        }
+
+        if (syncPayload && syncPayload.type === 'WHITEBOARD_SYNC') {
+          if (syncPayload.dataUrl) {
+            setRemoteWhiteboardUrl(syncPayload.dataUrl);
           }
-          if (data.docInfo !== undefined) {
-            setPresentedDocInfo(data.docInfo || null);
+          if (syncPayload.boardTheme) {
+            setRemoteBoardTheme(syncPayload.boardTheme);
           }
-          if (data.activeTab) {
-            setTutorActiveTab(data.activeTab);
+          if (syncPayload.docInfo !== undefined) {
+            setPresentedDocInfo(syncPayload.docInfo || null);
+          }
+          if (syncPayload.activeTab) {
+            setTutorActiveTab(syncPayload.activeTab);
             // Auto switch student view to whiteboard when tutor switches to whiteboard
-            if (data.activeTab === 'whiteboard') {
+            if (syncPayload.activeTab === 'whiteboard') {
               setActiveView('whiteboard');
-            } else if (data.activeTab === 'stage') {
+            } else if (syncPayload.activeTab === 'stage') {
               setActiveView('stage');
             }
           }

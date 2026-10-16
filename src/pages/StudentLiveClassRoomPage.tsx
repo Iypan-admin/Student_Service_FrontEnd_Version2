@@ -222,14 +222,106 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     }
   }, [chatMessages, showChat]);
 
-  // Unlock and ensure audio playback is unblocked for student
+  // Unlock and ensure audio playback is unblocked for student with direct WebRTC audio attach
   useEffect(() => {
     if (!room) return;
-    try {
-      if (typeof room.startAudio === 'function') {
-        room.startAudio().catch(() => {});
+
+    // Direct audio element pool for remote participant tracks (guarantees audio plays even if RoomAudioRenderer misses)
+    const audioElements = new Map<string, HTMLAudioElement>();
+
+    const attachAudioTrack = (track: any, participant: any) => {
+      if (!track || (track.kind !== 'audio' && track.kind !== Track.Kind.Audio)) return;
+      const trackId = track.sid || track.mediaStreamTrack?.id || participant?.identity;
+      if (!trackId) return;
+
+      if (!audioElements.has(trackId)) {
+        const audioEl = document.createElement('audio');
+        audioEl.autoplay = true;
+        audioEl.playsInline = true;
+        // Not muted! Students must hear the tutor
+        audioEl.muted = false;
+        audioEl.style.display = 'none';
+        document.body.appendChild(audioEl);
+        audioElements.set(trackId, audioEl);
       }
-    } catch (_) {}
+
+      const el = audioElements.get(trackId)!;
+      if (typeof track.attach === 'function') {
+        track.attach(el);
+      } else if (track.mediaStreamTrack) {
+        el.srcObject = new MediaStream([track.mediaStreamTrack]);
+      }
+      el.play().catch(() => {});
+    };
+
+    const detachAudioTrack = (track: any, participant: any) => {
+      const trackId = track?.sid || track?.mediaStreamTrack?.id || participant?.identity;
+      if (trackId && audioElements.has(trackId)) {
+        const el = audioElements.get(trackId)!;
+        try {
+          if (typeof track?.detach === 'function') {
+            track.detach(el);
+          }
+          el.srcObject = null;
+          el.remove();
+        } catch (_) {}
+        audioElements.delete(trackId);
+      }
+    };
+
+    // Attach any existing remote audio tracks
+    room.remoteParticipants.forEach((p) => {
+      p.trackPublications.forEach((pub) => {
+        if (pub.track && (pub.kind === Track.Kind.Audio || pub.track.kind === 'audio')) {
+          attachAudioTrack(pub.track, p);
+        }
+      });
+    });
+
+    const onTrackSubscribed = (track: any, pub: any, p: any) => {
+      if (track.kind === 'audio' || track.kind === Track.Kind.Audio) {
+        attachAudioTrack(track, p);
+      }
+    };
+
+    const onTrackUnsubscribed = (track: any, pub: any, p: any) => {
+      if (track.kind === 'audio' || track.kind === Track.Kind.Audio) {
+        detachAudioTrack(track, p);
+      }
+    };
+
+    room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
+    room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
+
+    // Audio unlock listener on user gestures
+    const unlockAudio = () => {
+      if (typeof (room as any).startAudio === 'function') {
+        (room as any).startAudio().catch(() => {});
+      }
+      audioElements.forEach((el) => {
+        if (el.paused) el.play().catch(() => {});
+      });
+    };
+
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    unlockAudio();
+
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
+      room.off(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      audioElements.forEach((el, key) => {
+        try {
+          el.srcObject = null;
+          el.remove();
+        } catch (_) {}
+      });
+      audioElements.clear();
+    };
   }, [room]);
 
   // Send message to classroom via reliable data channel

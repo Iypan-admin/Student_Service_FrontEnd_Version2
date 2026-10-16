@@ -115,28 +115,47 @@ const CameraStreamVideo: React.FC<CameraStreamVideoProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const currentTrackIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     const mediaTrack =
       trackRef?.publication?.track ||
       trackRef?.track ||
+      participant?.getTrackPublication(Track.Source.ScreenShare)?.track ||
       participant?.getTrackPublication(Track.Source.Camera)?.track;
 
-    if (mediaTrack) {
-      mediaTrack.attach(el);
-      if (el.paused) {
-        el.play().catch(() => {});
+    const trackId = mediaTrack?.sid || mediaTrack?.mediaStreamTrack?.id || null;
+
+    if (mediaTrack && trackId) {
+      if (currentTrackIdRef.current !== trackId || !el.srcObject) {
+        currentTrackIdRef.current = trackId;
+        if (typeof mediaTrack.attach === 'function') {
+          mediaTrack.attach(el);
+        } else if (mediaTrack.mediaStreamTrack) {
+          el.srcObject = new MediaStream([mediaTrack.mediaStreamTrack]);
+        }
+        if (el.paused) {
+          el.play().catch(() => {});
+        }
       }
-      return () => {
-        try {
-          mediaTrack.detach(el);
-        } catch (_) {}
-      };
     } else {
-      el.srcObject = null;
+      if (currentTrackIdRef.current) {
+        currentTrackIdRef.current = null;
+        el.srcObject = null;
+      }
     }
-  }, [trackRef, participant]);
+  }, [trackRef?.publication?.track?.sid, trackRef?.publication?.track?.mediaStreamTrack?.id, participant]);
+
+  useEffect(() => {
+    return () => {
+      const el = videoRef.current;
+      if (el) {
+        el.srcObject = null;
+      }
+    };
+  }, []);
 
   return (
     <video
@@ -668,19 +687,22 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
   const tutorCamPub = tutorParticipant?.getTrackPublication(Track.Source.Camera);
   const tutorScreenPub = tutorParticipant?.getTrackPublication(Track.Source.ScreenShare);
 
-  // Find remote tutor track (prefer tutor screen/camera track)
-  const tutorTrack = screenShareTracks.find((t) => t.participant.identity === tutorParticipant?.identity && !t.publication?.isMuted)
-    || cameraTracks.find((t) => t.participant.identity === tutorParticipant?.identity && !t.publication?.isMuted)
-    || (tutorScreenPub?.track ? { participant: tutorParticipant, publication: tutorScreenPub, source: Track.Source.ScreenShare } : undefined)
-    || (tutorCamPub?.track ? { participant: tutorParticipant, publication: tutorCamPub, source: Track.Source.Camera } : undefined)
-    || screenShareTracks[0]
-    || cameraTracks.find((t) => !t.participant.isLocal);
+  // Find remote tutor track (prefer tutor screen/camera track, strictly prioritize active screen share)
+  const activeTutorScreen = screenShareTracks.find(
+    (t) => t.participant.identity === tutorParticipant?.identity && !t.publication?.isMuted && t.publication?.track
+  ) || (tutorScreenPub?.track && !tutorScreenPub?.isMuted ? { participant: tutorParticipant, publication: tutorScreenPub, source: Track.Source.ScreenShare } : undefined);
+
+  const activeTutorCam = cameraTracks.find(
+    (t) => t.participant.identity === tutorParticipant?.identity && !t.publication?.isMuted && t.publication?.track
+  ) || (tutorCamPub?.track && !tutorCamPub?.isMuted ? { participant: tutorParticipant, publication: tutorCamPub, source: Track.Source.Camera } : undefined);
+
+  const tutorTrack = activeTutorScreen || activeTutorCam || cameraTracks.find((t) => !t.participant.isLocal);
 
   const isTutorCameraOn = !!(
+    activeTutorScreen ||
+    activeTutorCam ||
     tutorParticipant?.isCameraEnabled ||
-    tutorTrack?.publication?.track ||
-    tutorCamPub?.track ||
-    tutorScreenPub?.track
+    tutorTrack?.publication?.track
   );
 
   const localCamPub = localParticipant?.getTrackPublication(Track.Source.Camera);

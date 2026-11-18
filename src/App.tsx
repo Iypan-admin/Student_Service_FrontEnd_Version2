@@ -22,7 +22,7 @@ import RefundCancellationPolicy from './pages/RefundCancellationPolicy';
 import ContactUs from './pages/ContactUs';
 import EventCalendarPage from './pages/EventCalendarPage';
 import NotificationsPage from './pages/NotificationsPage';
-import StudentLiveClassRoomPage from './pages/StudentLiveClassRoomPage';
+import StudentLiveClassRoomPage, { LiveClassErrorBoundary } from './pages/StudentLiveClassRoomPage';
 import StudentBatchRecordingsPage from './pages/StudentBatchRecordingsPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -109,7 +109,9 @@ function App() {
             path="/class/:batchId/live"
             element={
               <ProtectedRoute>
-                <StudentLiveClassRoomPage />
+                <LiveClassErrorBoundary>
+                  <StudentLiveClassRoomPage />
+                </LiveClassErrorBoundary>
               </ProtectedRoute>
             }
           />

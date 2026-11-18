@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -71,6 +71,80 @@ const formatISTTime = (isoString?: string) => {
     return '';
   }
 };
+
+// Error Boundary to prevent blank white screen on unexpected WebRTC / LiveKit crashes
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: (error: Error, reset: () => void) => React.ReactNode;
+  onReset?: () => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class LiveClassErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('LiveClassRoom unhandled exception caught by ErrorBoundary:', error, errorInfo);
+  }
+
+  resetError = () => {
+    this.setState({ hasError: false, error: null });
+    if (this.props.onReset) this.props.onReset();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback(this.state.error || new Error('Unknown error'), this.resetError);
+      }
+      return (
+        <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center font-sans">
+          <div className="max-w-md w-full bg-slate-900/90 border border-red-500/30 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-red-400">
+              <XCircle className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Live Classroom Interrupted</h2>
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              We encountered an unexpected issue while rendering the live studio. Click below to reconnect.
+            </p>
+            {this.state.error && (
+              <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] font-mono text-red-300 text-left mb-6 overflow-x-auto max-h-32">
+                {this.state.error.message || String(this.state.error)}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Reload Classroom</span>
+              </button>
+              <button
+                onClick={() => { window.location.href = '/dashboard'; }}
+                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Helper to accurately resolve participant role from LiveKit metadata, identity, or names
 const getParticipantRole = (p: any): string => {
@@ -349,14 +423,14 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     const text = chatInputText.trim();
     if (!text || !room || room.state !== 'connected' || !room.localParticipant) return;
 
-    const myName = localParticipant.name || 'Student';
+    const myName = localParticipant?.name || 'Student';
     const myRole = 'student';
     const myRoleLabel = 'Student';
 
     const newMsg = {
       type: 'CHAT_MESSAGE',
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      senderId: localParticipant.identity,
+      senderId: localParticipant?.identity || '',
       senderName: myName,
       role: myRole,
       roleLabel: myRoleLabel,
@@ -576,14 +650,14 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
           }
           return;
         } else if (data.type === 'HAND_RAISE') {
-          if (data.studentId !== localParticipant.identity) {
+          if (localParticipant?.identity && data.studentId !== localParticipant.identity) {
             toast(`${data.studentName || participant?.name || 'A classmate'} raised their hand ✋`, {
               icon: '✋',
               style: { background: '#1e293b', color: '#fff' }
             });
           }
         } else if (data.type === 'LOWER_HAND_BY_TUTOR') {
-          if (data.targetStudentId === localParticipant.identity || data.targetStudentId === 'ALL') {
+          if ((localParticipant?.identity && data.targetStudentId === localParticipant.identity) || data.targetStudentId === 'ALL') {
             setIsHandRaised(false);
             toast('Your hand was acknowledged by the instructor ✋');
           }
@@ -603,7 +677,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     return () => {
       room.off('dataReceived', handleDataReceived);
     };
-  }, [room, localParticipant.identity]);
+  }, [room, localParticipant?.identity]);
 
   // Request latest whiteboard & document presentation state on connect
   useEffect(() => {
@@ -624,8 +698,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     const nextState = !isHandRaised;
     setIsHandRaised(nextState);
 
-    const sId = localParticipant.identity;
-    const sName = localParticipant.name || 'Student';
+    const sId = localParticipant?.identity || '';
+    const sName = localParticipant?.name || 'Student';
 
     if (nextState) {
       const payload = JSON.stringify({
@@ -711,6 +785,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     (localCamPub?.track ? { participant: localParticipant, publication: localCamPub, source: Track.Source.Camera } : undefined);
 
   const handleToggleCamera = async () => {
+    if (!localParticipant) return;
     try {
       const nextState = !isCameraEnabled;
       if (nextState) {
@@ -929,11 +1004,11 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                         }`}
                     >
                       <span className="text-2xl sm:text-4xl font-bold">
-                        {(localParticipant.name || 'S')[0]?.toUpperCase() || 'Y'}
+                        {((localParticipant?.name || 'Student')[0] || 'Y').toUpperCase()}
                       </span>
                     </div>
                     <h3 className="text-sm sm:text-base font-bold text-white mb-1">
-                      {localParticipant.name || 'You'}
+                      {localParticipant?.name || 'You'}
                     </h3>
                     <span className="text-[10px] sm:text-xs text-slate-400 font-medium">Student (You)</span>
                   </div>
@@ -942,7 +1017,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 {/* Local Student Bottom Status Pill */}
                 <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 bg-black/70 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-medium flex items-center gap-1.5 sm:gap-2 border border-white/10 text-white">
                   <span className={`w-2 h-2 rounded-full ${isMicrophoneEnabled ? 'bg-emerald-500' : 'bg-slate-500'}`} />
-                  <span className="truncate max-w-[120px] sm:max-w-none">{localParticipant.name || 'You'} (Student)</span>
+                  <span className="truncate max-w-[120px] sm:max-w-none">{localParticipant?.name || 'You'} (Student)</span>
                   {isMicrophoneEnabled ? (
                     <Mic className="w-3 h-3 text-emerald-400 ml-0.5" />
                   ) : (
@@ -1203,11 +1278,11 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
               <div className="flex items-center justify-between p-2.5 bg-slate-800/60 border border-slate-700/60 rounded-xl">
                 <div className="flex items-center gap-2.5 sm:gap-3">
                   <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white">
-                    {(localParticipant.name || 'Y')[0]?.toUpperCase()}
+                    {((localParticipant?.name || 'Student')[0] || 'Y').toUpperCase()}
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-white">
-                      {localParticipant.name || 'You'} (Student)
+                      {localParticipant?.name || 'You'} (Student)
                     </p>
                     <span className="text-[10px] text-slate-400">Online</span>
                   </div>
@@ -1315,7 +1390,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 </div>
               ) : (
                 chatMessages.map((msg) => {
-                  const isMe = msg.senderId === localParticipant.identity;
+                  const isMe = localParticipant?.identity ? msg.senderId === localParticipant.identity : false;
                   const isMsgTeacher = msg.role === 'teacher';
                   const isMsgAcademic = msg.role === 'academic' || msg.role === 'admin';
 
@@ -1437,13 +1512,16 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       <div className="h-14 sm:h-18 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex items-center justify-between sm:justify-center px-2 sm:px-6 gap-1 sm:gap-3 z-30 shrink-0">
         {/* Mic Toggle */}
         <button
-          onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, {
-            autoGainControl: true,
-            echoCancellation: true,
-            noiseSuppression: true,
-            sampleRate: 48000,
-            channelCount: 1
-          })}
+          onClick={() => {
+            if (!localParticipant) return;
+            localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, {
+              autoGainControl: true,
+              echoCancellation: true,
+              noiseSuppression: true,
+              sampleRate: 48000,
+              channelCount: 1
+            });
+          }}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isMicrophoneEnabled
               ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
               : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
@@ -1537,9 +1615,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
 };
 
 // Main Student Live Classroom Wrapper Component
-// Main Student Live Classroom Wrapper Component
 export const StudentLiveClassRoomPage: React.FC = () => {
   const { batchId } = useParams<{ batchId: string }>();
+  const [searchParams] = useSearchParams();
+  const roomIdParam = searchParams.get('roomId');
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -1639,13 +1718,18 @@ export const StudentLiveClassRoomPage: React.FC = () => {
       const classes = await getLiveClasses({ batch_id: batchId });
       const nowMs = Date.now();
 
-      // Check if there is an active LIVE class or currently in-session scheduled class
-      const live = classes.find((c) =>
-        c.status === 'LIVE' ||
-        (c.status === 'SCHEDULED' &&
-          nowMs >= new Date(c.scheduled_start).getTime() &&
-          nowMs <= new Date(c.scheduled_end).getTime())
-      );
+      // Check if there is an active LIVE class, a matching room from URL, or currently in-session scheduled class
+      const live = (roomIdParam
+        ? classes.find((c) => (c.room_name === roomIdParam || c.livekit_room_name === roomIdParam) && c.status !== 'CANCELLED')
+        : null) ||
+        classes.find((c) =>
+          c.status === 'LIVE' ||
+          (c.status === 'SCHEDULED' &&
+            nowMs >= new Date(c.scheduled_start).getTime() &&
+            nowMs <= new Date(c.scheduled_end).getTime())
+        ) ||
+        // Fallback: If joined from Dashboard directly with a recent class today
+        (roomIdParam ? classes.find((c) => c.room_name === roomIdParam || c.livekit_room_name === roomIdParam) : null);
       if (live) {
         setActiveLiveClass(live);
         setLastExpiredClass(null);
@@ -1693,7 +1777,7 @@ export const StudentLiveClassRoomPage: React.FC = () => {
     return () => {
       stopPolling();
     };
-  }, [batchId]);
+  }, [batchId, roomIdParam]);
 
   const handleLeaveClass = () => {
     stopPolling();
@@ -1832,19 +1916,26 @@ export const StudentLiveClassRoomPage: React.FC = () => {
   // Active Live Class Session found & Approved -> Render LiveKit Studio
   if (activeLiveClass && joinData) {
     return (
-      <LiveKitRoom
-        serverUrl={joinData.livekitUrl}
-        token={joinData.token}
-        connect={true}
-        video={false}
-        audio={false}
-        options={roomOptions}
-        onDisconnected={handleLeaveClass}
-        data-lk-theme="default"
+      <LiveClassErrorBoundary
+        onReset={() => {
+          setJoinData(null);
+          fetchBatchClasses();
+        }}
       >
-        <ClassroomStage liveClass={activeLiveClass} onLeave={handleLeaveClass} />
-        <RoomAudioRenderer />
-      </LiveKitRoom>
+        <LiveKitRoom
+          serverUrl={joinData.livekitUrl}
+          token={joinData.token}
+          connect={true}
+          video={false}
+          audio={false}
+          options={roomOptions}
+          onDisconnected={handleLeaveClass}
+          data-lk-theme="default"
+        >
+          <ClassroomStage liveClass={activeLiveClass} onLeave={handleLeaveClass} />
+          <RoomAudioRenderer />
+        </LiveKitRoom>
+      </LiveClassErrorBoundary>
     );
   }
 

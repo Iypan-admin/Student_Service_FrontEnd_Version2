@@ -9,7 +9,7 @@ import {
   useTracks,
   useRoomContext
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { Track, RoomEvent } from 'livekit-client';
 import {
   Mic,
   MicOff,
@@ -158,7 +158,7 @@ const getParticipantRole = (p: any): string => {
       if (meta.role === 'teacher' || meta.isTeacher) return 'Instructor (Host)';
       if (meta.role === 'student') return 'Student';
     }
-  } catch (_) {}
+  } catch (_) { }
 
   const id = (p.identity || '').toLowerCase();
   if (id.startsWith('academic_')) return 'Academic Manager';
@@ -211,7 +211,7 @@ const CameraStreamVideo: React.FC<CameraStreamVideoProps> = ({
           el.srcObject = new MediaStream([mediaTrack.mediaStreamTrack]);
         }
         if (el.paused) {
-          el.play().catch(() => {});
+          el.play().catch(() => { });
         }
       }
     } else {
@@ -305,7 +305,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.25);
-    } catch (_) {}
+    } catch (_) { }
   };
 
   // Auto-scroll chat feed to bottom on new messages
@@ -344,7 +344,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
       } else if (track.mediaStreamTrack) {
         el.srcObject = new MediaStream([track.mediaStreamTrack]);
       }
-      el.play().catch(() => {});
+      el.play().catch(() => { });
     };
 
     const detachAudioTrack = (track: any, participant: any) => {
@@ -357,7 +357,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
           }
           el.srcObject = null;
           el.remove();
-        } catch (_) {}
+        } catch (_) { }
         audioElements.delete(trackId);
       }
     };
@@ -389,10 +389,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     // Audio unlock listener on user gestures
     const unlockAudio = () => {
       if (typeof (room as any).startAudio === 'function') {
-        (room as any).startAudio().catch(() => {});
+        (room as any).startAudio().catch(() => { });
       }
       audioElements.forEach((el) => {
-        if (el.paused) el.play().catch(() => {});
+        if (el.paused) el.play().catch(() => { });
       });
     };
 
@@ -411,7 +411,7 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         try {
           el.srcObject = null;
           el.remove();
-        } catch (_) {}
+        } catch (_) { }
       });
       audioElements.clear();
     };
@@ -685,8 +685,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
     const timer = setTimeout(() => {
       try {
         const payload = JSON.stringify({ type: 'REQUEST_SYNC' });
-        room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => {});
-      } catch (_) {}
+        room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true }).catch(() => { });
+      } catch (_) { }
     }, 800);
     return () => clearTimeout(timer);
   }, [room, localParticipant]);
@@ -867,8 +867,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             <button
               onClick={() => setActiveView('stage')}
               className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${activeView === 'stage'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
-                  : 'text-slate-400 hover:text-white'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                : 'text-slate-400 hover:text-white'
                 }`}
               title="Classroom Stage"
             >
@@ -879,8 +879,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             <button
               onClick={() => setActiveView('whiteboard')}
               className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer relative ${activeView === 'whiteboard'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
-                  : 'text-slate-400 hover:text-white'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
+                : 'text-slate-400 hover:text-white'
                 }`}
               title="Whiteboard"
             >
@@ -924,8 +924,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
               {/* Tile 1: Tutor / Instructor Primary Tile */}
               <div
                 className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${isTutorSpeaking
-                    ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
-                    : 'border border-slate-800'
+                  ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
+                  : 'border border-slate-800'
                   }`}
               >
                 {isTutorCameraOn ? (
@@ -934,8 +934,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                   <div className="text-center p-4 sm:p-6 flex flex-col items-center justify-center">
                     <div
                       className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mb-2 sm:mb-4 shadow-xl transition-all ${isTutorSpeaking
-                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 scale-110 shadow-emerald-500/50'
-                          : 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white'
+                        ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 scale-110 shadow-emerald-500/50'
+                        : 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white'
                         }`}
                     >
                       <span className="text-2xl sm:text-4xl font-bold">
@@ -979,10 +979,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
               {/* Tile 2: Local Student (You) Tile */}
               <div
                 className={`bg-slate-900 rounded-2xl sm:rounded-3xl overflow-hidden relative flex flex-col items-center justify-center shadow-2xl transition-all duration-300 ${isHandRaised
-                    ? 'border-2 border-amber-500 ring-4 ring-amber-500/30 shadow-amber-500/20 shadow-2xl'
-                    : isLocalSpeaking
-                      ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
-                      : 'border border-slate-800'
+                  ? 'border-2 border-amber-500 ring-4 ring-amber-500/30 shadow-amber-500/20 shadow-2xl'
+                  : isLocalSpeaking
+                    ? 'border-2 border-emerald-500 ring-4 ring-emerald-500/20 shadow-emerald-500/20 shadow-2xl'
+                    : 'border border-slate-800'
                   }`}
               >
                 {/* Hand Raised Floating Badge */}
@@ -999,8 +999,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                   <div className="text-center p-4 sm:p-6 flex flex-col items-center justify-center">
                     <div
                       className={`w-16 h-16 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mb-2 sm:mb-4 shadow-xl transition-all ${isLocalSpeaking
-                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 scale-110'
-                          : 'bg-slate-800 border border-slate-700 text-slate-200'
+                        ? 'bg-emerald-600 text-white ring-4 ring-emerald-400/50 scale-110'
+                        : 'bg-slate-800 border border-slate-700 text-slate-200'
                         }`}
                     >
                       <span className="text-2xl sm:text-4xl font-bold">
@@ -1044,11 +1044,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                     ) : (
                       <div className="text-center p-4 flex flex-col items-center justify-center">
                         <div
-                          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-2 shadow-lg font-bold text-lg ${
-                            isAcademic
+                          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-2 shadow-lg font-bold text-lg ${isAcademic
                               ? 'bg-purple-950/80 border border-purple-500 text-purple-200'
                               : 'bg-slate-800 border border-slate-700 text-slate-300'
-                          }`}
+                            }`}
                         >
                           {(p.name || (isAcademic ? 'A' : 'P'))[0]?.toUpperCase()}
                         </div>
@@ -1071,9 +1070,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         {activeView === 'whiteboard' && (
           <div className="flex-1 w-full h-full p-0 sm:p-2 md:p-3 flex flex-col items-center justify-center overflow-hidden relative">
             <div
-              className={`w-full h-full flex-1 rounded-none sm:rounded-2xl md:rounded-3xl overflow-auto shadow-2xl relative border-0 sm:border flex flex-col items-center justify-start transition-all ${
-                remoteBoardTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-[#f8fafc] border-slate-300'
-              }`}
+              className={`w-full h-full flex-1 rounded-none sm:rounded-2xl md:rounded-3xl overflow-auto shadow-2xl relative border-0 sm:border flex flex-col items-center justify-start transition-all ${remoteBoardTheme === 'dark' ? 'bg-[#090d16] border-slate-800' : 'bg-[#f8fafc] border-slate-300'
+                }`}
             >
               {/* Subtle Grid Pattern */}
               <div
@@ -1121,11 +1119,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 {/* Fit Mode Toggle */}
                 <button
                   onClick={() => setStudentFitMode((m) => (m === 'page' ? 'width' : 'page'))}
-                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer shrink-0 ${
-                    studentFitMode === 'width'
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer shrink-0 ${studentFitMode === 'width'
                       ? 'bg-blue-600 text-white border-blue-400 shadow-sm'
                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                  }`}
+                    }`}
                   title={studentFitMode === 'width' ? 'Switch to Fit Screen' : 'Switch to Fit Width'}
                 >
                   {studentFitMode === 'width' ? 'Fit Width' : 'Fit Page'}
@@ -1201,9 +1198,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                   ) : (
                     <div className="text-center p-1">
                       <div
-                        className={`w-6 h-6 sm:w-9 sm:h-9 rounded-full flex items-center justify-center mx-auto mb-0.5 text-xs font-bold ${
-                          isTutorSpeaking ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-blue-600 text-white'
-                        }`}
+                        className={`w-6 h-6 sm:w-9 sm:h-9 rounded-full flex items-center justify-center mx-auto mb-0.5 text-xs font-bold ${isTutorSpeaking ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' : 'bg-blue-600 text-white'
+                          }`}
                       >
                         {tutorDisplayName[0]?.toUpperCase() || 'T'}
                       </div>
@@ -1308,19 +1304,17 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 return (
                   <div
                     key={p.identity}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                      isAcademic
+                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${isAcademic
                         ? 'bg-purple-950/40 border-purple-800/60 shadow-sm shadow-purple-950/20'
                         : 'bg-slate-800/40 border-slate-700/40'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 sm:gap-3">
                       <div
-                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                          isAcademic
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs ${isAcademic
                             ? 'bg-purple-600 text-white shadow'
                             : 'bg-slate-700 text-slate-200'
-                        }`}
+                          }`}
                       >
                         {(p.name || (isAcademic ? 'A' : 'P'))[0]?.toUpperCase()}
                       </div>
@@ -1334,9 +1328,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                           )}
                         </div>
                         <span
-                          className={`text-[10px] ${
-                            isAcademic ? 'text-purple-300 font-semibold' : 'text-slate-400'
-                          }`}
+                          className={`text-[10px] ${isAcademic ? 'text-purple-300 font-semibold' : 'text-slate-400'
+                            }`}
                         >
                           {isAcademic ? 'Academic Manager (Observer)' : 'Classmate'}
                         </span>
@@ -1405,13 +1398,12 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                           {msg.senderName} {isMe && <span className="text-[10px] text-slate-400 font-normal">(You)</span>}
                         </span>
 
-                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${
-                          isMsgTeacher
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${isMsgTeacher
                             ? 'bg-purple-950/80 text-purple-300 border-purple-500/40'
                             : isMsgAcademic
-                            ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}>
+                              ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}>
                           {msg.roleLabel || (isMsgTeacher ? 'Instructor' : (isMsgAcademic ? 'Academic' : 'Student'))}
                         </span>
 
@@ -1420,15 +1412,14 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
 
                       {/* Message Bubble */}
                       <div className="relative max-w-[88%] sm:max-w-[82%]">
-                        <div className={`p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm break-words ${
-                          isMe
+                        <div className={`p-2.5 sm:p-3 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm break-words ${isMe
                             ? 'bg-purple-600 text-white rounded-tr-sm'
                             : isMsgTeacher
-                            ? 'bg-slate-800 text-slate-100 border border-purple-500/40 rounded-tl-sm'
-                            : isMsgAcademic
-                            ? 'bg-slate-800 text-slate-100 border border-amber-500/40 rounded-tl-sm'
-                            : 'bg-slate-800 text-slate-200 border border-slate-700/70 rounded-tl-sm'
-                        }`}>
+                              ? 'bg-slate-800 text-slate-100 border border-purple-500/40 rounded-tl-sm'
+                              : isMsgAcademic
+                                ? 'bg-slate-800 text-slate-100 border border-amber-500/40 rounded-tl-sm'
+                                : 'bg-slate-800 text-slate-200 border border-slate-700/70 rounded-tl-sm'
+                          }`}>
                           {/* Quoted Reply Block */}
                           {msg.replyTo && (
                             <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-black/35 border-l-2 border-amber-400 text-[11px]">
@@ -1493,11 +1484,10 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
                 <button
                   type="submit"
                   disabled={!chatInputText.trim()}
-                  className={`p-2 rounded-xl transition-all cursor-pointer ${
-                    chatInputText.trim()
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${chatInputText.trim()
                       ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30'
                       : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  }`}
+                    }`}
                   title="Send Message"
                 >
                   <Send className="w-4 h-4" />
@@ -1523,8 +1513,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             });
           }}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isMicrophoneEnabled
-              ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
-              : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
+            ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
+            : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
             }`}
           title={isMicrophoneEnabled ? 'Mute Microphone' : 'Unmute Microphone'}
         >
@@ -1535,8 +1525,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         <button
           onClick={handleToggleCamera}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all cursor-pointer ${isCameraEnabled
-              ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
-              : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
+            ? 'bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 shadow-md'
+            : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
             }`}
           title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
         >
@@ -1549,8 +1539,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         <button
           onClick={() => setActiveView((prev) => (prev === 'stage' ? 'whiteboard' : 'stage'))}
           className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${activeView === 'whiteboard'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
+            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+            : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
             }`}
         >
           {activeView === 'whiteboard' ? <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <PenTool className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
@@ -1562,8 +1552,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
         <button
           onClick={toggleRaiseHand}
           className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-semibold transition-all cursor-pointer ${isHandRaised
-              ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30 scale-105'
-              : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
+            ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30 scale-105'
+            : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
             }`}
         >
           <Hand className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1579,8 +1569,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             if (!showChat) setShowAttendees(false);
           }}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center relative transition-all cursor-pointer ${showChat
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
             }`}
           title="Classroom Chat"
         >
@@ -1599,8 +1589,8 @@ const ClassroomStage: React.FC<ClassroomStageProps> = ({ liveClass, onLeave }) =
             if (!showAttendees) setShowChat(false);
           }}
           className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-center relative transition-all cursor-pointer ${showAttendees
-              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
             }`}
           title="Class participants"
         >
@@ -1678,7 +1668,7 @@ export const StudentLiveClassRoomPage: React.FC = () => {
           toast.error('Tutor declined admission.');
         } else if (res.status === 'NOT_REQUESTED') {
           // If session reset or tutor cleared, re-request knock automatically
-          await requestJoinLiveClass(classId).catch(() => {});
+          await requestJoinLiveClass(classId).catch(() => { });
         }
       } catch (err) {
         // silent retry
